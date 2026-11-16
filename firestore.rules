@@ -30,7 +30,7 @@ service cloud.firestore {
         && request.resource.data.w is string && request.resource.data.w.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
         && request.resource.data.s is int && request.resource.data.s >= 0 && request.resource.data.s <= 360000
         && request.resource.data.k is int && request.resource.data.k >= 0 && request.resource.data.k <= 1000
-        && request.resource.data.m is int && request.resource.data.m >= 0 && request.resource.data.m <= 300
+        && request.resource.data.m is int && request.resource.data.m >= 0 && request.resource.data.m <= 150
         && request.resource.data.t is int && request.resource.data.t >= 0
         && request.resource.data.l is int && request.resource.data.l >= 0 && request.resource.data.l <= 10
         && request.resource.data.p is int && request.resource.data.p >= 0 && request.resource.data.p <= 5;
