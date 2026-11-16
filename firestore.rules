@@ -1,0 +1,59 @@
+// Правила Firestore проекта kitayskiy-5 — ЧЕРНОВИК для публикации (site52, 16.11.2026). Лежит в репозитории как firestore.rules.
+// Публикует в консоли Firebase ТОЛЬКО Илья (консоль → Firestore Database → Rules → вставить → Publish). Сам файл в Firebase не загружается.
+// Что защищают правила: чужие данные (прогресс и строка рейтинга пишутся только владельцем), формат и потолки значений, закрытый reports.
+// Чего правила НЕ могут: проверить, что цифры честные. Клиент сам считает секунды/слова/уроки и шлёт их; владелец строки может записать
+// любое число в пределах потолка (напр. 100 часов в неделю). Ответы на задания лежат в самой странице — подсмотреть их нельзя запретить без сервера.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Прогресс человека: читает и пишет только владелец; удалять нельзя; только поля ts и data, data — строка до 500 000 знаков.
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['ts', 'data'])
+        && request.resource.data.ts is number
+        && request.resource.data.data is string
+        && request.resource.data.data.size() < 500000;
+      allow delete: if false;
+    }
+
+    // Рейтинг группы: читает любой вошедший; создаёт, меняет и удаляет ТОЛЬКО владелец своей строки (документ leaders/{свой uid}).
+    // Потолки (клиент site52 тоже режет значения до них):
+    //   s — секунды занятий за неделю ≤ 360000 (100 часов); k — серия дней ≤ 1000; m — известных слов ≤ 300;
+    //   l — пройденных уроков 0–10; p — пройденных топиков 0–5; n — ник 2–20 знаков; w — ключ недели «ГГГГ-ММ-ДД»; t — время (число).
+    match /leaders/{uid} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['n', 'w', 's', 'k', 'm', 't', 'l', 'p'])
+        && request.resource.data.n is string && request.resource.data.n.size() >= 2 && request.resource.data.n.size() <= 20
+        && request.resource.data.w is string && request.resource.data.w.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+        && request.resource.data.s is int && request.resource.data.s >= 0 && request.resource.data.s <= 360000
+        && request.resource.data.k is int && request.resource.data.k >= 0 && request.resource.data.k <= 1000
+        && request.resource.data.m is int && request.resource.data.m >= 0 && request.resource.data.m <= 300
+        && request.resource.data.t is int && request.resource.data.t >= 0
+        && request.resource.data.l is int && request.resource.data.l >= 0 && request.resource.data.l <= 10
+        && request.resource.data.p is int && request.resource.data.p >= 0 && request.resource.data.p <= 5;
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // «Нашёл ошибку»: документ reports/{uid}_{id}_{тип}; читать из сайта нельзя (только в консоли), удалять нельзя.
+    // Поля: i — id задания, t — тип, c — текст ≤ 200, d — время (число), n — имя ≤ 40.
+    match /reports/{rid} {
+      allow read: if false;
+      allow create, update: if request.auth != null && rid.size() <= 120 && rid.matches(request.auth.uid + '_[A-Za-z0-9_-]{1,90}')
+        && request.resource.data.keys().hasOnly(['i', 't', 'c', 'd', 'n'])
+        && request.resource.data.i is string && request.resource.data.i.size() <= 40
+        && request.resource.data.t is string && request.resource.data.t.size() <= 40
+        && request.resource.data.c is string && request.resource.data.c.size() <= 200
+        && request.resource.data.d is int
+        && request.resource.data.n is string && request.resource.data.n.size() <= 40;
+      allow delete: if false;
+    }
+
+    // Всё остальное закрыто (в Firestore и без этой строки закрыто — пишем явно).
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
