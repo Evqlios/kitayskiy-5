@@ -662,18 +662,6 @@ button.spk-on{background:var(--acc)!important;color:var(--on-acc)!important;anim
 .t11 b{display:block;font-size:30px;line-height:1.05;font-family:var(--f-head);color:var(--ink)}
 .t11 span{display:block;margin-top:4px;font-size:12px;color:var(--mut)}
 .c11{text-align:left;margin-top:10px}
-.d57{text-align:left;margin-top:10px}
-.d57 .dz57{margin:0 0 10px}
-.dr57+.dr57{margin-top:12px}
-.dh57{display:flex;justify-content:space-between;align-items:baseline;font-size:14px}
-.dh57 b{font-size:16px}
-.dr57.now .dh57 span{font-weight:700}
-.db57{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:6px}
-.db57 i{display:block;height:100%;background:var(--good)}
-.dw57{margin-top:4px;font-size:13px;color:var(--mut)}
-.dw57 b{color:var(--ink);font-weight:600}
-.dw57 em{font-style:normal;font-weight:600;margin-left:4px}
-.dw57 em.up{color:var(--good)}.dw57 em.dn{color:var(--warn)}
 .h11{display:block;margin-bottom:6px}
 .rd11{display:flex;align-items:center;gap:14px}
 .ring11{--p:0;flex:none;width:76px;height:76px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--good) calc(var(--p)*1%),var(--line) 0)}
@@ -870,12 +858,11 @@ function cleanState(o){
   if(o.act && typeof o.act.d === 'string' && /^\d{4}-\d{1,2}-\d{1,2}$/.test(o.act.d)) s.act = { d: o.act.d, s: clampN(o.act.s, 86400) };
   if(typeof o.nick === 'string') s.nick = o.nick.replace(/[<>&"'`]/g, '').trim().slice(0, 20);
   if(typeof o.rate === 'boolean') s.rate = o.rate;
-  if(o.wk && typeof o.wk.w === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(o.wk.w)) { s.wk = { w: o.wk.w, s: clampN(o.wk.s, 604800) }; if(Number.isFinite(o.wk.m) && o.wk.m > 0) s.wk.m = clampN(o.wk.m, 150); }   // m (site57) — слов помню на неделе
+  if(o.wk && typeof o.wk.w === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(o.wk.w)) s.wk = { w: o.wk.w, s: clampN(o.wk.s, 604800) };
   if(o.tl) s.tl = cleanMap(o.tl, /^[1-5]$/, v => v && typeof v === 'object' ? { s: clampN(v.s, 4), d: clampN(v.d, 4e12), p: clampN(v.p, 100) } : null);
   if(Number.isFinite(o.xp)) s.xp = clampN(o.xp, 1e7);
   if(Number.isFinite(o.open)) s.open = Math.max(-1, Math.min(10, Math.floor(o.open)));
-  if(o.sk && typeof o.sk.d === 'string' && /^\d{4}-\d{1,2}-\d{1,2}$/.test(o.sk.d)) { s.sk = { d: o.sk.d, n: clampN(o.sk.n, 9999) }; if(typeof o.sk.f === 'string' && /^\d{4}-\d{1,2}-\d{1,2}$/.test(o.sk.f)) s.sk.f = o.sk.f; }   // f (site57) — день, закрытый заморозкой
-  if(o.wh){ const h = cleanMap(o.wh, /^\d{4}-\d{2}-\d{2}$/, v => v && typeof v === 'object' && v.s > 0 ? { s: clampN(v.s, 604800), m: clampN(v.m, 150) } : null); trimWh57(h); if(Object.keys(h).length) s.wh = h; }   // site57: прошлые недели
+  if(o.sk && typeof o.sk.d === 'string' && /^\d{4}-\d{1,2}-\d{1,2}$/.test(o.sk.d)) s.sk = { d: o.sk.d, n: clampN(o.sk.n, 9999) };
   if(Number.isFinite(o.reset) && o.reset > 0) s.reset = clampN(o.reset, 4e12);   // site44: метка сброса прогресса (мс)
   if(Number.isFinite(o._ts)) s._ts = o._ts;   // время последнего изменения — нужно для слияния с облаком
   if(o.prog) s.prog = cleanProg(o.prog);
@@ -1948,18 +1935,10 @@ function nodeAvail(L, n){
   return buildSession(L, n).length > 0 || n === 'tone';
 }
 function today(){ const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
-/* site57: мягкая серия. Пропуск ровно ОДНОГО дня «замораживается»: серия не рвётся, если сегодня набрать норму.
-   Заморозка не чаще раза в 7 дней (sk.f = пропущенный день, который она закрыла). Два пропуска подряд — серия сгорает. */
-const FREEZE_GAP57 = 7;
-const dayNum57 = d => { const p = String(d).split('-').map(Number); return Date.UTC(p[0], p[1] - 1, p[2]) / 864e5; };   // 'Г-М-Д' → номер дня (не зависит от часового пояса и перевода часов)
-const dayStr57 = n => { const d = new Date(n * 864e5); return d.getUTCFullYear() + '-' + (d.getUTCMonth() + 1) + '-' + d.getUTCDate(); };
-const skGap57 = sk => sk ? dayNum57(today()) - dayNum57(sk.d) : null;   // сколько дней прошло с последнего зачтённого дня серии
-// пропущенный день = sk.d + 1; заморозка свободна, если с прошлой заморозки прошло не меньше 7 дней
-const freezeReady57 = sk => !sk || !sk.f || dayNum57(sk.d) + 1 - dayNum57(sk.f) >= FREEZE_GAP57;
 function streakNow(){
   const sk = st.sk; if(!sk) return 0;
-  const g = skGap57(sk);
-  return (g >= 0 && (g <= 1 || (g === 2 && freezeReady57(sk)))) ? sk.n : 0;
+  const y = new Date(Date.now() - 864e5), ys = y.getFullYear() + '-' + (y.getMonth() + 1) + '-' + y.getDate();
+  return (sk.d === today() || sk.d === ys) ? sk.n : 0;
 }
 function updChip(){ const e = $('#chip'); if(e) e.innerHTML = chipHTML(); }
 function firstOpen(){
@@ -2041,7 +2020,7 @@ function errEnd56(S){
 }
 function nextBtn10(t, fbHTML, ok){
   const f = document.createElement('div');
-  f.innerHTML = '<div class="fb ' + (ok ? 'ok' : 'no') + '"><div class="t">' + (ok ? 'Верно ✓' : 'Неверно ✗') + '</div>' + fbHTML + whyTask(t) + (t.src ? '<span class="src">Источник: ' + esc(t.src) + '</span>' : '') + '</div>' + (t.gid ? '<div class="rep13" data-rep13="' + esc(String(t.gid)) + '"><button class="rp13" data-rp="open">⚑ Нашёл ошибку</button></div>' : '') + '<div class="row"><button class="b pri" id="snx">Дальше ▶</button></div>';   // site55: жалоба в панели ответа — ПЕРЕД рядом кнопок, иначе .row перестаёт быть последним и «Дальше» не липнет к низу (CSS #stask .row:last-child)
+  f.innerHTML = '<div class="fb ' + (ok ? 'ok' : 'no') + '"><div class="t">' + (ok ? 'Верно ✓' : 'Неверно ✗') + '</div>' + fbHTML + whyTask(t) + (t.src ? '<span class="src">Источник: ' + esc(t.src) + '</span>' : '') + '' + (t.gid ? '<div class="rep13" data-rep13="' + esc(String(t.gid)) + '"><button class="rp13" data-rp="open">⚑ Нашёл ошибку</button></div>' : '') + '</div><div class="row"><button class="b pri" id="snx">Дальше ▶</button></div>';   // site57: жалоба ВНУТРИ карточки ответа (.fb): после неё идёт липкий ряд «Дальше» (#stask .row:last-child) и перекрывал бы кнопку (site55–56: кнопка была под ним, невидима)
   $('#stask').appendChild(f);
   if(t.defer && ok){
     const pv = fsPreview(t.gid);
@@ -2560,11 +2539,11 @@ const actSec = () => (st.act && st.act.d === today()) ? st.act.s : 0;
 let lastInput7 = Date.now();
 ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach(ev => addEventListener(ev, () => { lastInput7 = Date.now(); }, { passive: true, capture: true }));
 function todayParts(){
-  const s = actSec(), m = Math.floor(s / 60), done = s >= GOAL7, k = streakNow(), fz = !done && k > 0 && skGap57(st.sk) === 2;   // fz: вчера пропуск, спасёт заморозка
+  const s = actSec(), m = Math.floor(s / 60), done = s >= GOAL7, k = streakNow();
   return {
     pc: Math.min(1, s / GOAL7), done, label: Math.min(m, 6) + '/6',
     h: done ? 'Норма на сегодня выполнена' : 'Сегодня ' + m + ' из 6 минут',
-    p: done ? 'Серия: ' + days7(k) + '. Можно продолжить: каждая минута закрепляет слова.' : (fz ? 'Вчера был пропуск: заморозка сохранит серию ' + days7(k) + ', если сегодня наберётся 6 минут.' : k ? 'Серия ' + days7(k) + ' продолжится, когда наберётся 6 минут занятий.' : 'Серия начнётся, когда наберётся 6 минут занятий.')
+    p: done ? 'Серия: ' + days7(k) + '. Можно продолжить: каждая минута закрепляет слова.' : (k ? 'Серия ' + days7(k) + ' продолжится, когда наберётся 6 минут занятий.' : 'Серия начнётся, когда наберётся 6 минут занятий.')
   };
 }
 function paintToday(){
@@ -2580,22 +2559,18 @@ setInterval(() => {
   const was = actSec(), now = was + 1;
   st.act = { d: today(), s: now }; if(typeof wkTick === 'function') wkTick();
   if(now === GOAL7){
-    const fz = streakNow() > 0 && skGap57(st.sk) === 2;   // site57: серию спасёт заморозка
-    bumpStreak(); wkKnown57(); save(); updChip();
+    bumpStreak(); save(); updChip();
     const c = document.querySelector('.hdr-chip'); if(c){ c.classList.remove('bump'); void c.offsetWidth; c.classList.add('bump'); }
-    toast('Серия: ' + days7(streakNow()) + (fz ? '. Заморозка закрыла вчерашний пропуск' : '. Норма на сегодня выполнена'));
-  }else if(now % 30 === 0){ wkKnown57(); save(); }
+    toast('Серия: ' + days7(streakNow()) + '. Норма на сегодня выполнена');
+  }else if(now % 30 === 0) save();
   if(now % 5 === 0 || now === GOAL7) paintToday();
 }, 1000);
 document.addEventListener('visibilitychange', () => { if(document.hidden) save(); });
 function bumpStreak(){
   const t = today(), sk = st.sk || { d: '', n: 0 };
   if(sk.d === t) return sk;
-  const g = sk.d ? dayNum57(t) - dayNum57(sk.d) : 0, mk = (n, f) => f ? { d: t, n, f } : { d: t, n };
-  if(g === 1) st.sk = mk(sk.n + 1, sk.f);                                                    // вчера занимался — серия растёт
-  else if(g === 2 && freezeReady57(sk)) st.sk = mk(sk.n + 1, dayStr57(dayNum57(sk.d) + 1));   // один пропуск закрыт заморозкой
-  else st.sk = mk(1);                                                                         // иначе серия начинается заново
-  return st.sk;
+  const y = new Date(Date.now() - 864e5), ys = y.getFullYear() + '-' + (y.getMonth() + 1) + '-' + y.getDate();
+  st.sk = { d: t, n: sk.d === ys ? sk.n + 1 : 1 }; return st.sk;
 }
 function chipHTML(){ return '<span class="hdr-chip" title="Серия дней">' + icon('flame') + streakNow() + '</span>'; }
 
@@ -2836,16 +2811,7 @@ const FS_URL = 'https://firestore.googleapis.com/v1/projects/kitayskiy-5/databas
 const p2 = n => String(n).padStart(2, '0');
 // неделя = дата её понедельника (ГГГГ-ММ-ДД): по этому ключу считаются «минуты за неделю»
 function weekKey(){ const d = new Date(), wd = (d.getDay() + 6) % 7, m = new Date(d.getFullYear(), d.getMonth(), d.getDate() - wd); return m.getFullYear() + '-' + p2(m.getMonth() + 1) + '-' + p2(m.getDate()); }
-/* site57: личная динамика. st.wk = { w, s, m } — текущая неделя (секунды активности и сколько слов помнишь, m обновляется раз в 30 с);
-   st.wh = { 'ГГГГ-ММ-ДД недели': { s, m } } — прошлые недели (не больше 12). При смене недели старая уходит в st.wh. */
-function trimWh57(h){ const ks = Object.keys(h).sort(); ks.slice(0, Math.max(0, ks.length - 12)).forEach(k => delete h[k]); }   // 12 недель; число — внутри функции: cleanState зовёт её при загрузке, до объявления const ниже
-function archiveWeek57(){
-  const o = st.wk; if(!o || !o.s) return;
-  const h = st.wh || (st.wh = {}), p = h[o.w];
-  h[o.w] = { s: Math.max(o.s, p ? p.s : 0), m: Math.max(o.m || 0, p ? p.m : 0) }; trimWh57(h);
-}
-function wkTick(){ const w = weekKey(); if(!st.wk || st.wk.w !== w){ archiveWeek57(); st.wk = { w, s: 0 }; } st.wk.s++; }
-function wkKnown57(){ if(st.wk && st.wk.w === weekKey()) st.wk.m = Math.min(knownCount(), 150); }
+function wkTick(){ const w = weekKey(); if(!st.wk || st.wk.w !== w) st.wk = { w, s: 0 }; st.wk.s++; }
 const wkSec = () => (st.wk && st.wk.w === weekKey()) ? st.wk.s : 0;
 const knownCount = () => WORD_DECK.filter(w => memState(w.id) === 'know').length;
 const rUser = () => (window.hzGetUser && window.hzGetUser()) || null;
@@ -3560,41 +3526,6 @@ function segBar11(s){
   const n = Math.max(1, s.n), kn = Math.round(100 * s.kn / n), lr = Math.round(100 * s.lrn / n);
   return '<div class="sb11" role="img" aria-label="помню ' + s.kn + ', учу ' + s.lrn + ', новых ' + s.nw + '"><i class="k" style="width:' + kn + '%"></i><i class="l" style="width:' + lr + '%"></i></div>';
 }
-/* site57: «Моя динамика» — мои минуты и слова по неделям (6 последних), вместо только общей таблицы рейтинга. Данные: st.wk (эта неделя) + st.wh (прошлые). */
-const MON57 = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
-function weekKeyOf57(dn){ const d = new Date(dn * 864e5); return d.getUTCFullYear() + '-' + p2(d.getUTCMonth() + 1) + '-' + p2(d.getUTCDate()); }
-function weekLabel57(dn, i){
-  if(i === 0) return 'Эта неделя'; if(i === 1) return 'Прошлая неделя';
-  const a = new Date(dn * 864e5), b = new Date((dn + 6) * 864e5), am = MON57[a.getUTCMonth()], bm = MON57[b.getUTCMonth()];
-  return am === bm ? a.getUTCDate() + '–' + b.getUTCDate() + ' ' + bm : a.getUTCDate() + ' ' + am + ' – ' + b.getUTCDate() + ' ' + bm;
-}
-function weeks57(n){   // n недель, новые первыми: { w, s (секунды), m (слов помню или null), d (прирост слов к предыдущей неделе или null) }
-  const H = {}; Object.keys(st.wh || {}).forEach(k => { H[k] = st.wh[k]; });
-  if(st.wk && st.wk.w){ const p = H[st.wk.w]; H[st.wk.w] = { s: Math.max(st.wk.s || 0, p ? p.s : 0), m: Math.max(st.wk.m || 0, p ? p.m : 0) }; }
-  const base = dayNum57(weekKey()), rows = [];
-  for(let i = n - 1; i >= 0; i--){ const w = weekKeyOf57(base - 7 * i), h = H[w]; rows.push({ w, dn: base - 7 * i, s: h ? h.s : 0, m: h && h.m > 0 ? h.m : null }); }
-  let prev = null; Object.keys(H).sort().forEach(k => { if(k < rows[0].w && H[k].m > 0) prev = H[k].m; });   // последний известный итог до окна
-  rows.forEach(r => { if(r.m === null) r.m = prev; r.d = (r.m !== null && prev !== null) ? r.m - prev : null; if(r.m !== null) prev = r.m; });
-  return rows.reverse().map((r, i) => Object.assign(r, { i }));
-}
-function freezeLine57(){
-  const sk = st.sk; if(!sk || !sk.n || !streakNow()) return 'Серия растёт, когда за день наберётся 6 минут. Один пропущенный день заморозка прощает.';
-  if(freezeReady57(sk)){ return 'Заморозка серии готова: один пропущенный день серию не прервёт.'; }
-  const left = Math.max(1, dayNum57(sk.f) + FREEZE_GAP57 - dayNum57(today()));
-  return 'Заморозка использована, новая будет через ' + days7(left) + '.';
-}
-function dyn57HTML(){
-  const rows = weeks57(6), mx = Math.max.apply(null, rows.map(r => r.s)), has = rows.filter(r => r.s > 0).length;
-  const body = rows.map(r => {
-    const min = Math.floor(r.s / 60), wd = r.s > 0 ? Math.max(3, Math.round(100 * r.s / mx)) : 0;
-    const d = r.d === null || r.d === 0 ? '' : ' <em class="' + (r.d > 0 ? 'up' : 'dn') + '">' + (r.d > 0 ? '+' : '−') + Math.abs(r.d) + '</em>';
-    return '<div class="dr57' + (r.i === 0 ? ' now' : '') + '"><div class="dh57"><span>' + weekLabel57(r.dn, r.i) + '</span><b>' + min + ' мин</b></div>' +
-      '<div class="db57"><i style="width:' + wd + '%"></i></div>' +
-      '<div class="dw57">' + (r.m === null ? 'слов помню: —' : 'слов помню: <b>' + r.m + '</b>' + d) + '</div></div>';
-  }).join('');
-  return '<div class="card d57" id="dyn57"><b class="h11">Моя динамика</b><p class="small dz57">' + freezeLine57() + '</p>' + body +
-    (has < 2 ? '<p class="small">Прошлые недели появятся здесь, когда позанимаешься неделю.</p>' : '') + '</div>';
-}
 function viewStats(){
   viewStats0();
   const snd = $('#dg') && $('#dg').closest('.card'), bak = $('#exp') && $('#exp').closest('.card'), dlc = $('#dlpk') && $('#dlpk').closest('.card');   // dlc (site53): карточка «Звук без интернета» переезжает вместе с обработчиком
@@ -3604,14 +3535,12 @@ function viewStats(){
   let pt = 0, pd = 0; const lessons = []; for(let L = 1; L <= 10; L++){ const P = lessonParts(L).length, d = partsFrac17(L); pt += P; pd += d; lessons.push('<div class="ls11' + (P && lessonParts(L).every(([n]) => nodeStars(L, n)) ? ' full' : '') + '"><b>' + L + '</b><span>' + fmt17(d) + '/' + P + '</span></div>'); }
   const row = (nm, s) => '<div class="br11"><div class="bt11"><span>' + nm + '</span><b>' + s.kn + '<small> из ' + s.n + '</small></b></div>' + segBar11(s) + '</div>';
   const w = Math.floor(wkSec() / 60);
-  wkKnown57();   // site57: сколько слов помню на этой неделе — для «Моей динамики»
   view.innerHTML =
     '<div class="tiles11">' +
       '<div class="t11"><b>' + streakNow() + '</b><span>дней подряд</span></div>' +
       '<div class="t11"><b>' + w + '</b><span>мин за неделю</span></div>' +
       '<div class="t11"><b>' + sw.kn + '</b><span>слов помню</span></div>' +
     '</div>' +
-    dyn57HTML() +
     '<div class="card c11"><div class="rd11"><div class="ring11" style="--p:' + rd + '"><b>' + rd + '%</b></div>' +
       '<div class="rdt11"><b>Готовность к курсу</b><span>уроки ' + lf + ' из 10 · топики ' + td + ' из 5</span></div></div></div>' +
     '<div class="card c11">' + row('Слова', sw) + row('Знаки', sc) + row('Фразы', ss) +
@@ -3622,7 +3551,7 @@ function viewStats(){
       '<div class="sl11"><div class="slt11"><span>Подсветка при озвучке</span><b id="hloV"></b></div><input type="range" id="setHlo" min="-300" max="300" step="25" aria-label="Сдвиг подсветки"><div class="slh11"><span>раньше</span><span>позже</span></div></div></div>' +
     '<details class="dt11"><summary>По урокам</summary><div class="ls-grid11">' + lessons.join('') + '</div><p class="small">Пройдено заданий в уроках: ' + fmt17(pd) + ' из ' + pt + '</p></details>' +
     '<details class="dt11" id="d11b"><summary>Перенос и сброс данных</summary></details>';
-  const host = $('#d11b'); if(dlc) host.appendChild(dlc); if(bak) host.appendChild(bak);   // «Проверку звука» из статистики убрали: пользователю она ничего не говорит
+  const host = $('#d11b'); if(bak) host.appendChild(bak); if(dlc) host.parentNode.insertBefore(dlc, $('#setAuto').closest('.card').nextSibling);   // site57: «Скачать звук» видна сразу под «Настройками», не в свёрнутом блоке   // «Проверку звука» из статистики убрали: пользователю она ничего не говорит
   $('#setAuto').onchange = e => { st.auto = e.target.checked; save(); };
   $('#setRuby').onchange = e => { st.ruby = e.target.checked; save(); };
   const hl = $('#setHlo'), hv = $('#hloV'), hshow = v => { hv.textContent = (+v > 0 ? '+' : '') + v + ' мс'; };
@@ -4758,32 +4687,13 @@ window.addEventListener('load', async () => {
   // v19: серия {d: 'Г-М-Д', n}. Дата одна — больше n. Даты разные: берём более позднюю; если дни подряд, серия
   // продолжается (n раннего + 1), но не меньше n позднего. Так «30 дней в облаке + занялся до входа» даёт 31, а не 1.
   const dayNum = d => { const p = String(d).split('-').map(Number); return Date.UTC(p[0], p[1] - 1, p[2]) / 864e5; };
-  // site57: мягкая серия. Поле f — пропущенный день, закрытый заморозкой (не чаще раза в 7 дней). Дни через один (разрыв 2) тоже
-  // продолжают серию, если у раннего устройства заморозка свободна; тогда f = пропущенный день. Поле f не пишем, если его нет.
-  const dayStr = n => { const d = new Date(n * 864e5); return d.getUTCFullYear() + '-' + (d.getUTCMonth() + 1) + '-' + d.getUTCDate(); };
-  const laterF = (x, y) => !x ? y : !y ? x : (dayNum(x) >= dayNum(y) ? x : y);
-  const mkSk = (d, n, f) => f ? { d, n, f } : { d, n };
   function mergeSk(a, b){
     if(!a) return b; if(!b) return a;
     const da = dayNum(a.d), db = dayNum(b.d);
     if(!(da >= 0) || !(db >= 0)) return (a.n || 0) >= (b.n || 0) ? a : b;
-    if(da === db) return mkSk(a.d, Math.max(a.n || 0, b.n || 0), laterF(a.f, b.f));
-    const early = da < db ? a : b, late = da < db ? b : a, gap = Math.abs(da - db);
-    if(gap === 1) return mkSk(late.d, Math.max(late.n || 0, (early.n || 0) + 1), laterF(early.f, late.f));
-    if(gap === 2 && (!early.f || dayNum(early.d) + 1 - dayNum(early.f) >= 7)) return mkSk(late.d, Math.max(late.n || 0, (early.n || 0) + 1), laterF(late.f, dayStr(dayNum(early.d) + 1)));
-    return mkSk(late.d, late.n || 0, late.f);
-  }
-  // site57: история недель wh = { 'ГГГГ-ММ-ДД': { s, m } } (12 последних). По неделям — максимум s и m; неделя, проигравшая в слиянии wk
-  // (другая неделя у другой стороны), не пропадает, а уходит в wh.
-  function mergeWh(L, R, wk){
-    const W = {};
-    const add = (w, s, m) => { if(!(s > 0)) return; const p = W[w]; W[w] = { s: Math.max(s, p ? p.s : 0), m: Math.max(m || 0, p ? p.m : 0) }; };
-    [L, R].forEach(S => {
-      Object.keys(S.wh || {}).forEach(w => { const v = S.wh[w]; if(v) add(w, v.s, v.m); });
-      if(S.wk && S.wk.w && (!wk || S.wk.w !== wk.w)) add(S.wk.w, S.wk.s, S.wk.m);
-    });
-    const ks = Object.keys(W).sort(); ks.slice(0, Math.max(0, ks.length - 12)).forEach(k => delete W[k]);
-    return W;
+    if(da === db) return { d: a.d, n: Math.max(a.n || 0, b.n || 0) };
+    const early = da < db ? a : b, late = da < db ? b : a;
+    return { d: late.d, n: Math.abs(da - db) === 1 ? Math.max(late.n || 0, (early.n || 0) + 1) : (late.n || 0) };
   }
   // site44: метка сброса st.reset (мс). Кнопка «Сбросить прогресс» ставит её; при слиянии сторона с более ранней меткой
   // (или без метки) теряет всё, что старше метки: иначе с другого устройства прогресс «воскресал».
@@ -4818,17 +4728,16 @@ window.addEventListener('load', async () => {
     if(rl !== rr){ if(rl < T) L = afterReset(L, T); else R = afterReset(R, T); }
     const out = Object.assign({}, L);
     Object.keys(R).forEach(k => {
-      if(LOCAL_ONLY.has(k) || k === 'err' || k === 'errx' || k === 'wh') return;   // err/errx и wh — ниже, отдельными блоками
+      if(LOCAL_ONLY.has(k) || k === 'err' || k === 'errx') return;   // err/errx — ниже, одним блоком
       if(k === 'prog') out.prog = mergeProg(L.prog || {}, R.prog || {});
       else if(k === 'sk') out.sk = mergeSk(L.sk, R.sk);   // v19: серия дней — по датам, а не «от более свежей стороны»
       else if(k === 'act'){ const a = L.act, b = R.act; out.act = !a ? b : !b ? a : a.d === b.d ? { d: a.d, s: Math.max(a.s, b.s) } : (bNewer ? b : a); }   // минуты за день: тот же день — больше, разные дни — от свежей стороны
       else if(k === 'tl'){ const a = L.tl || {}, b = R.tl || {}, o = {}; Object.keys(Object.assign({}, a, b)).forEach(t => { const x = a[t], y = b[t]; o[t] = !x ? y : !y ? x : ((y.d || 0) > (x.d || 0) || ((y.d || 0) === (x.d || 0) && (y.s || 0) > (x.s || 0))) ? y : x; }); out.tl = o; }   // выученные топики: берём запись с более поздней датой (или дальше по шагам)
-      else if(k === 'wk'){ const a = L.wk, b = R.wk; out.wk = !a ? b : !b ? a : a.w === b.w ? (a.m || b.m ? { w: a.w, s: Math.max(a.s, b.s), m: Math.max(a.m || 0, b.m || 0) } : { w: a.w, s: Math.max(a.s, b.s) }) : (a.w > b.w ? a : b); }   // минуты за неделю: та же неделя — больше, разные — более поздняя (m — слов помню, site57)
+      else if(k === 'wk'){ const a = L.wk, b = R.wk; out.wk = !a ? b : !b ? a : a.w === b.w ? { w: a.w, s: Math.max(a.s, b.s) } : (a.w > b.w ? a : b); }   // минуты за неделю: та же неделя — больше, разные — более поздняя
       else if(!(k in L)) out[k] = R[k];
       else out[k] = mergeDeep(L[k], R[k], bNewer);
     });
     if(L.err || R.err || L.errx || R.errx){ const m = mergeErr(L, R); ['err', 'errx'].forEach(f => { if(Object.keys(m[f]).length) out[f] = m[f]; else delete out[f]; }); }   // site56
-    if(L.wh || R.wh || (L.wk && R.wk)){ const W = mergeWh(L, R, out.wk); if(Object.keys(W).length) out.wh = W; else delete out.wh; }   // site57
     if(T) out.reset = T;
     return out;
   }
