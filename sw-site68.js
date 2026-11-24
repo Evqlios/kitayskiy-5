@@ -1,11 +1,11 @@
-/* Service worker страницы site66 (офлайн). Создан сборкой из v30/sw.template.js; публикуется рядом со страницей как sw-site66.js.
+/* Service worker страницы site68 (офлайн). Создан сборкой из v30/sw.template.js; публикуется рядом со страницей как sw-site68.js.
    site51: область = ВСЯ папка сайта (раньше — только адрес страницы), чтобы запуск с иконки на экране телефона (manifest start_url "./",
    то есть index.html, который лишь перекидывает на страницу) открывался без сети: на запрос "./" и "index.html" без сети отдаётся кэш страницы этой версии.
    Страница siteNN.html: сеть первой (обновления не залипают), без сети — копия из кэша. Другие siteNN.html (старые версии) воркер не трогает.
    Звуковые пакеты pack2_*.mp3 и иконки: из кэша, если уже скачаны. Каждая новая версия регистрирует свой sw-siteNN.js в той же области и заменяет прежний. */
-const CACHE = 'hz5-site66';
+const CACHE = 'hz5-site68';
 const SCOPE = self.registration.scope;                // адрес папки сайта, с «/» на конце
-const PAGE = new URL('site66.html', SCOPE).href;     // страница этой версии
+const PAGE = new URL('site68.html', SCOPE).href;     // страница этой версии
 const ROOTS = [SCOPE, SCOPE + 'index.html'];          // то, на что ведёт иконка (start_url "./")
 const STATIC = /\/(pack2_(?:[nms]|[fxyjbe][nms])\.mp3|icon-\d+\.png|manifest\.webmanifest)$/;
 self.addEventListener('install', e => {
