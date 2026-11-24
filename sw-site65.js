@@ -7,7 +7,7 @@ const CACHE = 'hz5-site65';
 const SCOPE = self.registration.scope;                // адрес папки сайта, с «/» на конце
 const PAGE = new URL('site65.html', SCOPE).href;     // страница этой версии
 const ROOTS = [SCOPE, SCOPE + 'index.html'];          // то, на что ведёт иконка (start_url "./")
-const STATIC = /\/(pack2_[nms]\.mp3|icon-\d+\.png|manifest\.webmanifest)$/;
+const STATIC = /\/(pack2_(?:[nms]|[fx][nms])\.mp3|icon-\d+\.png|manifest\.webmanifest)$/;
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.add(new Request(PAGE, { cache: 'reload' }))).then(() => self.skipWaiting()));
 });
