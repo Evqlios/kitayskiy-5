@@ -7,14 +7,14 @@ const { chromium } = require('playwright'); const { spawn } = require('child_pro
   await new Promise(r => setTimeout(r, 800));
   const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] }); const out = {}; const ctx = await b.newContext({ viewport: { width: 390, height: 844 } }); const p = await ctx.newPage();
   const errs = []; p.on('pageerror', e => errs.push(e.message));
-  await p.goto('http://localhost:8765/site65.html'); await p.evaluate(() => localStorage.setItem('hz5how', '1')); await p.reload(); await p.waitForTimeout(1200);
+  await p.goto('http://localhost:8765/site66.html'); await p.evaluate(() => localStorage.setItem('hz5how', '1')); await p.reload(); await p.waitForTimeout(1200);
   await p.evaluate(() => { window.__tts = 0; window.SpeechSynthesisUtterance = function(t){ this.text = t; }; speechSynthesis.speak = () => { window.__tts++; }; });
   const AIDX_V_ID = await p.evaluate(() => AIDX.fn);
   const cases = [['w001', '你', 'старое слово'], ['s001', '你们好！', 'старое предложение'], ['w120', null, 'новое слово (урок 11)'], [Object.keys(AIDX_V_ID).find(i => /^d1[1-5]_/.test(i)) || 'd11_1', null, 'строка диалога урока 11–15']];
   const res = [];
-  for (const v of ['m', 'f']) for (const sp of ['n', 'm', 's']) for (const [id, text, name] of cases) {
+  for (const v of ['f1', 'f4', 'm6', 'm3', 'm5']) for (const sp of ['n', 'm', 's']) for (const [id, text, name] of cases) {
     const r = await p.evaluate(async ([v, sp, id, text, name]) => {
-      st.voice = v; st.speed = sp; window.__tts = 0;
+      st.voice = v[0]; if (v[0] === 'f') st.vf = v; else st.vm = v; st.speed = sp; window.__tts = 0;
       const txt = text || (id[0] === 'w' ? (wById[id] && (wById[id].tts || wById[id].hz)) : 'x');
       const prev = curAudio && curAudio.src; if(AEL){ AEL.pause(); AEL.removeAttribute('src'); AEL.load(); }   // load() сбрасывает readyState: иначе берём длительность прошлого клипа
       playAudio0(id, txt, null);
