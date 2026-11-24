@@ -2,20 +2,20 @@
 // Публикация: консоль Firebase → Firestore Database → Rules → вставить весь файл → Publish. Сам файл в Firebase не загружается.
 //
 // ПЕРЕД публикацией, один раз, в консоли (Firestore Database → Data) создать документ-пропуск для группы:
-//   коллекция  groupcodes,  ID документа = КОД ГРУППЫ (8–12 знаков, только A–Z и 0–9, например K7M4Q9XT), любое поле, например name = "ПГПУ".
+//   коллекция  groupcodes,  ID документа = КОД ГРУППЫ (10–16 знаков, ТОЛЬКО ЗАГЛАВНЫЕ A–Z и цифры 0–9, например K7M4Q9XT2B; сайт приводит ввод к заглавным, строчный ID не найдётся), любое поле, например name = "ПГПУ".
 // Без этого документа в рейтинг не войти. Сменить код = создать новый документ и удалить старый (старые участники перестанут видеть рейтинг).
 //
 // Что защищают правила: чужие данные (прогресс и строка рейтинга пишутся только владельцем), формат и потолки значений,
 // закрытый reports, вход в рейтинг только по коду группы, рост минут за неделю не быстрее часов сервера.
-// Чего правила НЕ могут: доказать, что цифры честные. Секунды растут не быстрее реального времени, но «набить» время в открытой вкладке
-// можно. Ответы на задания лежат в самой странице — подсмотреть их нельзя запретить без сервера.
+// Чего правила НЕ могут: доказать, что цифры честные. Минуты за неделю ограничены «6 часов + реальное время с первой записи недели»,
+// но «набить» время в открытой вкладке можно. Ответы на задания лежат в самой странице — подсмотреть их нельзя запретить без сервера.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     // Прогресс человека: читает и пишет только владелец; удалять нельзя; только поля ts и data.
-    // data — строка до 500 000 знаков, похожая на JSON-объект (начинается с «{», кончается «}»). Разобрать JSON правила не умеют:
-    // содержимое дополнительно чистит сам сайт при загрузке (cleanState).
+    // data — строка длиннее 2 и короче 500 000 знаков. Разобрать JSON правила не умеют (проверка «начинается с {» через срезы строк
+    // не подтверждена без эмулятора, поэтому не включена): содержимое чистит сам сайт при загрузке (cleanState).
     match /users/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;
       allow create, update: if request.auth != null && request.auth.uid == uid
@@ -23,9 +23,7 @@ service cloud.firestore {
         && request.resource.data.ts is number
         && request.resource.data.data is string
         && request.resource.data.data.size() > 2
-        && request.resource.data.data.size() < 500000
-        && request.resource.data.data[0:1] == '{'
-        && request.resource.data.data[request.resource.data.data.size() - 1:request.resource.data.data.size()] == '}';
+        && request.resource.data.data.size() < 500000;
       allow delete: if false;
     }
 
@@ -35,20 +33,19 @@ service cloud.firestore {
     }
 
     // Рейтинг группы: groups/{КОД}/leaders/{uid}. Читает любой вошедший, КОГДА такой КОД есть в groupcodes.
-    // Создаёт, меняет и удаляет ТОЛЬКО владелец своей строки.
+    // Создаёт, меняет и удаляет ТОЛЬКО владелец своей строки (удалить можно, пока код в groupcodes ещё есть).
     // Поля: n — ник 2–20; g — тот же код; w — ключ недели ГГГГ-ММ-ДД; s — секунды за неделю ≤ 360000; k — серия ≤ 1000;
-    // m — слов ≤ 150; l — уроков 0–10; p — топиков 0–5; t — время клиента (число); u — время СЕРВЕРА (клиент шлёт REQUEST_TIME).
-    // Защита по времени для s:
-    //   • первая запись строки или первая запись новой недели: s ≤ 21600 (6 часов);
-    //   • обычная запись: s растёт не больше, чем прошло секунд на сервере с прошлой записи, плюс запас 120 с.
-    //     Проверка в миллисекундах: (s_новое − s_старое − 120) × 1000 ≤ (request.time − u_старое).
-    //   Пример: прошлая запись была 90 с назад, s было 1000 → s_новое ≤ 1000 + 90 + 120 = 1210.
-    // Удалить строку и создать заново нельзя использовать для обхода: создание ограничено теми же 21600 с.
+    // m — слов ≤ 150; l — уроков 0–10; p — топиков 0–5; t — время клиента (число);
+    // b — время СЕРВЕРА первой записи недели (клиент шлёт REQUEST_TIME; внутри недели менять нельзя).
+    // Защита по времени: s ≤ 21600 (6 ч «в подарок») + секунды, прошедшие на сервере с b, + запас 120 с на сеть и округления.
+    //   Пример: строка создана 2 ч назад (7200 с) → s ≤ 21600 + 7200 + 120 = 28920 (8 ч 2 мин).
+    // Запас считается ОДИН раз за неделю, а не за каждую запись: частые записи ничего не добавляют.
+    // Удалить строку и создать заново — новое b и снова только 6 ч: обойти потолок так нельзя, но можно «обнулить» свою неделю.
     match /groups/{code}/leaders/{uid} {
-      function codeOk() { return code.matches('[A-Z0-9]{6,32}') && exists(/databases/$(database)/documents/groupcodes/$(code)); }
+      function codeOk() { return code.matches('[A-Z0-9]{10,32}') && exists(/databases/$(database)/documents/groupcodes/$(code)); }
       function shapeOk() {
         let d = request.resource.data;
-        return d.keys().hasOnly(['n', 'g', 'w', 's', 'k', 'm', 't', 'l', 'p', 'u'])
+        return d.keys().hasOnly(['n', 'g', 'w', 's', 'k', 'm', 't', 'l', 'p', 'b'])
           && d.n is string && d.n.size() >= 2 && d.n.size() <= 20
           && d.g == code
           && d.w is string && d.w.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
@@ -58,16 +55,16 @@ service cloud.firestore {
           && d.t is int && d.t >= 0
           && d.l is int && d.l >= 0 && d.l <= 10
           && d.p is int && d.p >= 0 && d.p <= 5
-          && d.u is timestamp && d.u == request.time;
+          && d.b is timestamp
+          && d.s * 1000 <= 21600000 + request.time.toMillis() - d.b.toMillis() + 120000;
       }
       allow read: if request.auth != null && codeOk();
       allow create: if request.auth != null && request.auth.uid == uid && codeOk() && shapeOk()
-        && request.resource.data.s <= 21600;
+        && request.resource.data.b == request.time;
       allow update: if request.auth != null && request.auth.uid == uid && codeOk() && shapeOk()
         && (
-          request.resource.data.s <= 21600 && (request.resource.data.w != resource.data.w || resource.data.get('u', null) == null)
-          || resource.data.get('u', null) != null && request.resource.data.w == resource.data.w
-             && (request.resource.data.s - resource.data.s - 120) * 1000 <= request.time.toMillis() - resource.data.u.toMillis()
+          (request.resource.data.w != resource.data.w && request.resource.data.b == request.time)
+          || (request.resource.data.w == resource.data.w && request.resource.data.b == resource.data.b)
         );
       allow delete: if request.auth != null && request.auth.uid == uid && codeOk();
     }

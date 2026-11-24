@@ -871,7 +871,7 @@ function cleanState(o){
   if(o.act && typeof o.act.d === 'string' && /^\d{4}-\d{1,2}-\d{1,2}$/.test(o.act.d)) s.act = { d: o.act.d, s: clampN(o.act.s, 86400) };
   if(typeof o.nick === 'string') s.nick = o.nick.replace(/[<>&"'`]/g, '').trim().slice(0, 20);
   if(typeof o.rate === 'boolean') s.rate = o.rate;
-  if(typeof o.gcode === 'string' && /^[A-Z0-9]{6,32}$/.test(o.gcode)) s.gcode = o.gcode;   // site62: код группы (как в правилах Firestore)
+  if(typeof o.gcode === 'string' && /^[A-Z0-9]{10,32}$/.test(o.gcode)) s.gcode = o.gcode;   // site62: код группы (как в правилах Firestore)
   if(o.wk && typeof o.wk.w === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(o.wk.w)) { s.wk = { w: o.wk.w, s: clampN(o.wk.s, 604800) }; if(Number.isFinite(o.wk.m) && o.wk.m > 0) s.wk.m = clampN(o.wk.m, 150); }   // m (site57) — слов помню на неделе
   if(o.tl) s.tl = cleanMap(o.tl, /^[1-5]$/, v => v && typeof v === 'object' ? { s: clampN(v.s, 4), d: clampN(v.d, 4e12), p: clampN(v.p, 100) } : null);
   if(Number.isFinite(o.xp)) s.xp = clampN(o.xp, 1e7);
@@ -2820,6 +2820,7 @@ const FS_ROOT = 'projects/kitayskiy-5/databases/(default)/documents';
 const FS_HOST = 'https://firestore.googleapis.com/v1/';
 const fsBase = () => { if(!st.gcode) throw new Error('nocode'); return FS_HOST + FS_ROOT + '/groups/' + st.gcode + '/leaders'; };
 const cleanCode = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 32);
+const CODE_MIN = 10;   // как в правилах Firestore: короткий код можно перебрать
 const p2 = n => String(n).padStart(2, '0');
 // неделя = дата её понедельника (ГГГГ-ММ-ДД): по этому ключу считаются «минуты за неделю»
 function weekKey(){ const d = new Date(), wd = (d.getDay() + 6) % 7, m = new Date(d.getFullYear(), d.getMonth(), d.getDate() - wd); return m.getFullYear() + '-' + p2(m.getMonth() + 1) + '-' + p2(m.getDate()); }
@@ -2844,43 +2845,49 @@ async function fsReq(method, path, body){
   return r.status === 204 ? {} : r.json();
 }
 const intF = n => ({ integerValue: String(Math.max(0, Math.round(n))) });
-/* site62: защита рейтинга по времени. Правила Firestore не дают секундам `s` расти быстрее часов сервера (+ запас 120 с),
-   а первая запись недели не может быть больше 21600 с (6 ч). Чтобы честный человек не упёрся в этот потолок и не получил отказ,
-   клиент сам не шлёт больше разрешённого: PUB = что и когда мы отправили в прошлый раз (в памяти); если его нет — читаем свою строку.
-   Если секунд накоплено больше, чем можно отправить, лишнее просто «догонит» позже (но не сверх реального времени). */
-const S_FIRST = 21600, S_SLACK = 60;
-let PUB = null;
-async function sendSec(u){
-  const want = Math.min(wkSec(), 360000), w = weekKey();
-  if(!PUB || PUB.w !== w){
-    PUB = { w, s: 0, t: Date.now(), fresh: true };
-    try{
-      const d = await fsReq('GET', '/' + u.uid), f = d.fields || {};
-      const ts = f.u && f.u.timestampValue ? Date.parse(f.u.timestampValue) : NaN;
-      if(f.w && f.w.stringValue === w && f.s && !isNaN(ts)){ PUB = { w, s: +f.s.integerValue || 0, t: ts, fresh: false }; }
-    }catch(e){ /* нет строки (404) или сеть — считаем, что запись создаётся впервые */ }
-  }
-  const cap = PUB.fresh ? S_FIRST : PUB.s + Math.floor((Date.now() - PUB.t) / 1000) + S_SLACK;
-  return Math.max(0, Math.min(want, cap));
+/* site62: защита рейтинга по времени. В строке есть поле b — серверное время ПЕРВОЙ записи недели (ставит сервер, клиент его не меняет).
+   Правила Firestore требуют: s ≤ 21600 с (6 ч «в подарок») + секунды, прошедшие на сервере с b, + 120 с запаса на сеть.
+   Значит, за неделю нельзя показать больше «6 ч + реальное время с первой записи». Это потолок, а не доказательство честности.
+   Чтобы честный человек не получил отказ, клиент сам не шлёт больше разрешённого: PUB = последнее отправленное s и местное время отправки,
+   потолок = PUB.s + прошедшие секунды (по местным часам, поэтому сдвиг часов телефона не мешает). Лишнее «догонит» позже. */
+const S_FIRST = 21600;
+let PUB = null, PUBP = null;
+const FS_FIELDS = ['n', 'g', 'w', 's', 'k', 'm', 'l', 'p', 't'];   // поля, которые меняем при обычной записи (b не трогаем)
+// определяем режим: 'create' (строки нет или другая неделя: пишем целиком, сервер ставит новое b) или 'update' (та же неделя: b остаётся)
+async function pubState(u){
+  const w = weekKey();
+  if(PUB && PUB.w === w && PUB.uid === u.uid && PUB.g === st.gcode) return PUB;
+  let mode = 'create', s0 = 0;
+  try{
+    const d = await fsReq('GET', '/' + u.uid), f = d.fields || {};
+    if(f.w && f.w.stringValue === w && f.b && f.s){ mode = 'update'; s0 = +f.s.integerValue || 0; }
+  }catch(e){ if(!/http404/.test(String(e))) throw e; }   // 404 = строки нет; сеть или 403 — не публикуем, чтобы не затереть чужой результат
+  return (PUB = { w, uid: u.uid, g: st.gcode, mode, s: s0, t: Date.now() });
 }
 async function publishMe(){
-  const u = rUser(); if(!u || !st.rate || !st.nick || !st.gcode) return false;
-  try{
-    const s = await sendSec(u), doc = myDoc(s);
-    // commit вместо PATCH: нужен setToServerValue REQUEST_TIME, чтобы поле u было временем сервера, а не часов телефона
-    const tok = await u.getIdToken();
-    const r = await fetch(FS_HOST + FS_ROOT + ':commit', { method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ writes: [{ update: { name: FS_ROOT + '/groups/' + st.gcode + '/leaders/' + u.uid, fields: doc.fields }, updateTransforms: [{ fieldPath: 'u', setToServerValue: 'REQUEST_TIME' }] }] }) });
-    if(!r.ok) throw new Error('http' + r.status);
-    PUB = { w: weekKey(), s, t: Date.now(), fresh: false };
-    return true;
-  }catch(e){ PUB = null; return false; }   // при отказе в следующий раз заново узнаем состояние строки
+  if(PUBP) return PUBP;                                   // уже идёт отправка (интервал и экран рейтинга не гонятся друг с другом)
+  return (PUBP = (async () => {
+    const u = rUser(); if(!u || !st.rate || !st.nick || !st.gcode) return false;
+    try{
+      const ps = await pubState(u), want = Math.min(wkSec(), 360000);
+      const cap = ps.mode === 'create' ? S_FIRST : ps.s + Math.floor((Date.now() - ps.t) / 1000);
+      const s = Math.max(0, Math.min(want, cap)), doc = myDoc(s);
+      const w = { update: { name: FS_ROOT + '/groups/' + st.gcode + '/leaders/' + u.uid, fields: doc.fields } };
+      if(ps.mode === 'create') w.updateTransforms = [{ fieldPath: 'b', setToServerValue: 'REQUEST_TIME' }];   // commit, а не PATCH: нужно серверное время
+      else w.updateMask = { fieldPaths: FS_FIELDS };                                                              // b не в маске → остаётся прежним
+      const tok = await u.getIdToken();
+      const r = await fetch(FS_HOST + FS_ROOT + ':commit', { method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }, body: JSON.stringify({ writes: [w] }) });
+      if(!r.ok) throw new Error('http' + r.status);
+      PUB = { w: weekKey(), uid: u.uid, g: st.gcode, mode: 'update', s, t: Date.now() };
+      return true;
+    }catch(e){ PUB = null; return false; }                // при отказе в следующий раз заново узнаем состояние строки
+  })().finally(() => { PUBP = null; }));
 }
 const cleanNick = v => String(v || '').replace(/[<>&"'`]/g, '').replace(/\s+/g, ' ').trim().slice(0, 20);
 const wkLabel = () => { const [, m, d] = weekKey().split('-'); return d + '.' + m; };
 function wireRating(){
   const r = $('#rref'); if(r) r.onclick = renderRating;
-  const o = $('#rout'); if(o) o.onclick = async () => { const u = rUser(); if(!u) return; try{ await fsReq('DELETE', '/' + u.uid); }catch(e){} st.rate = false; PUB = null; save(); renderRating(); toast('Ты вышел из рейтинга, твоя запись удалена'); };
+  const o = $('#rout'); if(o) o.onclick = async () => { const u = rUser(); if(!u) return; let del = true; try{ await fsReq('DELETE', '/' + u.uid); }catch(e){ del = /http404/.test(String(e)); } st.rate = false; PUB = null; save(); renderRating(); toast(del ? 'Ты вышел из рейтинга, твоя запись удалена' : 'Ты вышел из рейтинга, но запись удалить не удалось (нет связи или кода). Она исчезнет сама, когда владелец сменит код'); };
 }
 // карточка рейтинга — в «Статистике», сразу под заголовком
 function route10(){
@@ -3183,7 +3190,7 @@ async function renderRating11(){
       '<input type="text" id="rcode" maxlength="32" autocapitalize="characters" autocomplete="off" placeholder="Код группы" value="' + esc(st.gcode || '') + '" style="font-size:18px;margin:8px 0"><button class="b pri" id="rjoin">Участвовать</button>';
     $('#rjoin').onclick = async () => {
       const n = cleanNick($('#rnick').value); if([...n].length < 2){ toast('Ник: от 2 до 20 знаков'); return; }   // site52: считаем знаки как правила Firestore (эмодзи = 1), не единицы UTF-16
-      const c = cleanCode($('#rcode').value); if(c.length < 6){ toast('Код группы: от 6 знаков, латиница и цифры'); return; }
+      const c = cleanCode($('#rcode').value); if(c.length < CODE_MIN){ toast('Код группы: от 10 знаков, латиница и цифры'); return; }
       st.nick = n; st.gcode = c; st.rate = true; PUB = null; save();
       if(!(await publishMe())){ st.rate = false; save(); toast('Код не подошёл или нет связи. Проверь код и попробуй ещё раз'); }
       renderRating();
