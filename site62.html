@@ -3955,7 +3955,7 @@ function viewRoles13(){
     (hide ? '' : '<button class="play sm" data-r13k="' + k + '" aria-label="Звук">🔊</button>') + '</div>';
   if(roles.length && ROLE13.role === null){
     view.innerHTML = back + head + '<section class="box"><h3>Выбери роль</h3><div class="small">Реплики партнёров прозвучат, свои ты скажешь сам и сверишь с книгой.</div><div class="role13">' +
-      roles.map(r => '<button class="b" data-r13="role" data-w="' + esc(r.who) + '"><span class="hz">' + esc(r.who) + '</span> ' + esc(r.name || '') + '</button>').join('') +
+      roles.map(r => '<button class="b" data-r13="role" data-w="' + esc(r.who) + '"><b style="font-size:20px;line-height:1.2;white-space:nowrap;flex:none">' + esc(r.who) + '</b> <span>' + esc(r.name || '') + '</span></button>').join('') +
       '</div><div class="row" style="margin-top:10px"><button class="b" data-r13="all">Только слушать и читать</button></div></section>';
   } else if(!roles.length || ROLE13.role === ''){
     view.innerHTML = back + head + '<div class="row" style="margin-bottom:10px"><button class="b pri" data-r13="playall">▶ Слушать всё</button>' + (roles.length ? '<button class="b" data-r13="other">Выбрать роль</button>' : '') + '</div>' + d.lines.map((x, k) => line(x, k, false)).join('');
