@@ -13,20 +13,35 @@ import json, os, re, sys
 
 src, dst, page = sys.argv[1:4]
 aidx, atim, report = {}, {}, {}
+page_s = open(page, encoding='utf-8').read()
+def old_index(mark, var):
+    m = re.search(r'/\*' + mark + r'\*/const ' + var + r' = (\{.*?\}); for\(const k in', page_s, re.S)
+    return json.loads(m.group(1)) if m else {}
+OLD_A, OLD_T = old_index('VOICE-AIDX', 'AIDX_V'), old_index('VOICE-ATIM', 'ATIM_V')
+# Дописываем в конец: уже выложенные клипы остаются на своих местах (смещения не меняются), иначе у тех, кто скачал набор раньше, звук поедет.
 for key in sorted(os.listdir(src)):
     d = os.path.join(src, key)
     if not os.path.isdir(d): continue
     ids = sorted(f[:-4] for f in os.listdir(d) if f.endswith('.mp3') and os.path.exists(os.path.join(d, f[:-4] + '.json')))
-    off, a, t = 0, {}, {}
-    with open(os.path.join(dst, 'pack2_' + key + '.mp3'), 'wb') as out:
+    path = os.path.join(dst, 'pack2_' + key + '.mp3')
+    a, t = dict(OLD_A.get(key, {})), dict(OLD_T.get(key, {}))
+    if a and os.path.exists(path):
+        buf = open(path, 'rb').read()
+        for i, (off, ln) in a.items():                       # проверка: клип в файле тот же, что в папке
+            assert buf[off:off + ln] == open(os.path.join(d, i + '.mp3'), 'rb').read(), 'клип ' + key + '/' + i + ' изменился'
+        mode, off = 'ab', len(buf)
+    else:
+        a, t, mode, off = {}, {}, 'wb', 0
+    with open(path, mode) as out:
         for i in ids:
+            if i in a: continue
             b = open(os.path.join(d, i + '.mp3'), 'rb').read()
             out.write(b); a[i] = [off, len(b)]; off += len(b)
             tm = json.load(open(os.path.join(d, i + '.json')))['t']
             if tm: t[i] = tm
     aidx[key], atim[key] = a, t
     report[key] = {'клипов': len(a), 'МБ': round(off / 1048576, 2), 'с таблицей времён': len(t)}
-s = open(page, encoding='utf-8').read()
+s = page_s
 def put(s, mark, js):
     pat = re.compile(r'/\*' + mark + r'\*/.*?/\*' + mark + r'-END\*/', re.S)
     assert len(pat.findall(s)) == 1, 'метка ' + mark + ' не найдена ровно один раз'
