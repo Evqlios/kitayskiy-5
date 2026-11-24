@@ -60,14 +60,14 @@ service cloud.firestore {
       allow delete: if request.auth != null && request.auth.uid == uid;
     }
 
-    // Статистика заданий (анонимно): taskstats/{id задания}; поля a — ответов, c — верных. Без uid и без ников.
+    // Статистика заданий (анонимно): taskstats/{id задания: gr01, pn01, g001 — как в клиенте, других id нельзя, чтобы не плодить мусорные документы}; поля a — ответов, c — верных. Без uid и без ников.
     // Читать может любой вошедший. Писать — любой вошедший, но только ПРИБАВЛЯТЬ: за одну запись не больше 50 ответов,
     // верных не больше ответов. Удалять и уменьшать нельзя. Защита от накрутки здесь слабая (анонимность и накрутка несовместимы),
     // поэтому цифры — ориентир для автора, а не оценка людей.
     match /taskstats/{tid} {
       function statOk() {
         let d = request.resource.data;
-        return tid.matches('[A-Za-z0-9_-]{1,40}') && d.keys().hasOnly(['a', 'c']) && d.a is int && d.c is int && d.c >= 0 && d.c <= d.a;
+        return tid.matches('(gr[0-9]{2}|pn[0-9]{2}|g[0-9]{3})') && d.keys().hasOnly(['a', 'c']) && d.a is int && d.c is int && d.c >= 0 && d.c <= d.a;
       }
       allow read: if request.auth != null;
       allow create: if request.auth != null && statOk() && request.resource.data.a <= 50;

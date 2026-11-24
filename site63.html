@@ -5317,27 +5317,40 @@ window.addEventListener('load', async () => {
   const ts13Save = () => { try{ localStorage.setItem(TS13_KEY, JSON.stringify(TS13)); }catch(e){} };
   const ts13Count = () => Object.keys(TS13).reduce((n, k) => n + TS13[k][0], 0);
   let TS13BUSY = false;
-  async function ts13Flush(){
-    if(TS13BUSY) return false;
-    const ids = Object.keys(TS13).filter(k => isErrId(k) && TS13[k][0] > 0).slice(0, 20);   // не больше 20 заданий за запрос
-    if(!ids.length) return true;
-    const u = rUser(); if(!u) return false;
-    TS13BUSY = true;
-    try{
-      const send = {}, writes = ids.map(id => {
-        const A = TS13[id][0], a = Math.min(A, TS13_MAX), c = Math.min(a, Math.round(TS13[id][1] * a / A)); send[id] = [a, c];   // если очередь длиннее 50, верные делятся в той же пропорции
-        return { update: { name: FS_ROOT + '/taskstats/' + id, fields: {} }, updateMask: { fieldPaths: [] },
-          updateTransforms: [{ fieldPath: 'a', increment: { integerValue: String(a) } }, { fieldPath: 'c', increment: { integerValue: String(c) } }] };
-      });
-      const tok = await u.getIdToken();
-      const r = await fetch(FS_HOST + FS_ROOT + ':commit', { method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }, body: JSON.stringify({ writes }) });
-      if(!r.ok) throw new Error('http' + r.status);
-      ids.forEach(id => { TS13[id][0] -= send[id][0]; TS13[id][1] -= send[id][1]; if(TS13[id][0] <= 0) delete TS13[id]; });   // вычитаем отправленное: ответы, пришедшие за время запроса, остаются
-      ts13Save(); return true;
-    }catch(e){ return false; }
-    finally{ TS13BUSY = false; }
-  }
-  // первый ответ на задание (t.counted ещё не стоит); неверная первая попытка в «Собери фразу» (try18) считается неверной, как в зачёте
+  const TS13BAD = {};   // id → сколько раз запись по нему отклонена за этот сеанс (3 и больше — пока пропускаем, чтобы один плохой ключ не держал остальные)
+const ts13Ok = e => Array.isArray(e) && Number.isInteger(e[0]) && Number.isInteger(e[1]) && e[0] > 0 && e[1] >= 0 && e[1] <= e[0];
+async function ts13Commit(ids, tok){
+  const send = {}, writes = ids.map(id => {
+    const A = TS13[id][0], a = Math.min(A, TS13_MAX), c = Math.min(a, Math.round(TS13[id][1] * a / A)); send[id] = [a, c];   // если очередь длиннее 50, верные делятся в той же пропорции
+    return { update: { name: FS_ROOT + '/taskstats/' + id, fields: {} }, updateMask: { fieldPaths: [] },
+      updateTransforms: [{ fieldPath: 'a', increment: { integerValue: String(a) } }, { fieldPath: 'c', increment: { integerValue: String(c) } }] };
+  });
+  const r = await fetch(FS_HOST + FS_ROOT + ':commit', { method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }, body: JSON.stringify({ writes }) });
+  if(!r.ok){ const e = new Error('http' + r.status); e.status = r.status; throw e; }
+  ids.forEach(id => { TS13[id][0] -= send[id][0]; TS13[id][1] -= send[id][1]; if(TS13[id][0] <= 0) delete TS13[id]; });   // вычитаем отправленное: ответы, пришедшие за время запроса, остаются
+  ts13Save();
+}
+async function ts13Flush(){
+  if(TS13BUSY) return false;
+  Object.keys(TS13).forEach(k => { if(!isErrId(k) || !ts13Ok(TS13[k])) delete TS13[k]; });   // испорченное в localStorage не отправляем
+  const ids = Object.keys(TS13).filter(k => (TS13BAD[k] || 0) < 3).slice(0, 20);   // не больше 20 заданий за запрос
+  if(!ids.length) return true;
+  const u = rUser(); if(!u) return false;
+  TS13BUSY = true;
+  try{
+    const tok = await u.getIdToken();
+    try{ await ts13Commit(ids, tok); ids.forEach(k => { delete TS13BAD[k]; }); return true; }
+    catch(e){
+      if(ids.length < 2 || !(e.status === 400 || e.status === 403)) throw e;
+      // commit атомарный: один плохой ключ отклоняет все 20. Повторяем по одному, чтобы остальные ушли
+      let ok = 0;
+      for(const id of ids){ try{ await ts13Commit([id], tok); ok++; delete TS13BAD[id]; }catch(e2){ TS13BAD[id] = (TS13BAD[id] || 0) + 1; if(e2.status === 400) delete TS13[id]; } }
+      ts13Save(); return ok > 0;
+    }
+  }catch(e){ ids.forEach(k => { TS13BAD[k] = (TS13BAD[k] || 0) + 1; }); return false; }
+  finally{ TS13BUSY = false; }
+}
+// первый ответ на задание (t.counted ещё не стоит); неверная первая попытка в «Собери фразу» (try18) считается неверной, как в зачёте
   const afterAnswer13ts = afterAnswer;
   afterAnswer = function(t, ok){
     try{

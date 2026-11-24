@@ -35,5 +35,9 @@ const FILE = process.argv[2] || 'file:///home/user/kitayskiy-5/site63.html';
   // 6) просмотр
   await p.evaluate(() => { window.hzGetUser = () => ({ uid: 'U1', getIdToken: async () => 'TOK' }); return window.ts13View(); }); await p.waitForTimeout(400);
   out.view = await p.evaluate(() => document.body.lastElementChild.innerText.replace(/\s+/g, ' ').slice(0, 220));
+  await p.evaluate(() => { window.__req.length = 0; window.hzGetUser = () => ({ uid: 'U1', getIdToken: async () => 'TOK' });
+    localStorage.setItem('hz5ts', '{}'); window.TS13().g500 = [3, 1]; window.TS13().g501 = [2, 2]; window.TS13().zz = [1, 1]; window.TS13().g502 = [1.5, 1];
+    const f0 = window.fetch; window.fetch = async (u, o) => { const b = JSON.parse(o.body); window.__req.push(b.writes.map(w => w.update.name.split('/').pop())); const bad = b.writes.some(w => /g500$/.test(w.update.name)); return { ok: !bad, status: bad ? 403 : 200, json: async () => ({}) }; }; return window.ts13Flush(); });
+  out.poison = await p.evaluate(() => ({ reqs: window.__req, left: Object.keys(window.TS13()) }));
   out.errs = errs; console.log(JSON.stringify(out, null, 1)); await b.close();
 })();
