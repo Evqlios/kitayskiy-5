@@ -925,7 +925,6 @@ function cleanState(o){
   if(o.act && typeof o.act.d === 'string' && /^\d{4}-\d{1,2}-\d{1,2}$/.test(o.act.d)) s.act = { d: o.act.d, s: clampN(o.act.s, 86400) };
   if(typeof o.nick === 'string') s.nick = o.nick.replace(/[<>&"'`]/g, '').trim().slice(0, 20);
   if(typeof o.rate === 'boolean') s.rate = o.rate;
-  if(typeof o.gcode === 'string' && /^[A-Z0-9]{10,32}$/.test(o.gcode)) s.gcode = o.gcode;   // site62: код группы (как в правилах Firestore)
   if(o.wk && typeof o.wk.w === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(o.wk.w)) { s.wk = { w: o.wk.w, s: clampN(o.wk.s, 604800) }; if(Number.isFinite(o.wk.m) && o.wk.m > 0) s.wk.m = clampN(o.wk.m, WCAP); }   // m (site57) — слов помню на неделе
   if(o.tl) s.tl = cleanMap(o.tl, /^[1-5]$/, v => v && typeof v === 'object' ? { s: clampN(v.s, 4), d: clampN(v.d, 4e12), p: clampN(v.p, 100) } : null);
   if(Number.isFinite(o.xp)) s.xp = clampN(o.xp, 1e7);
@@ -2868,13 +2867,10 @@ function analysisHTML(it){
    Данные лежат в коллекции leaders/{uid} (Firestore), читать могут вошедшие, писать — только владелец (правила в HANDOFF).
    Обращаемся к Firestore по REST с токеном пользователя (без пересборки SDK): CSP разрешает *.googleapis.com.
    ===================================================================== */
-/* site62: рейтинг лежит в groups/{КОД}/leaders/{uid}. Правила пускают читать и писать, только если в базе есть документ groupcodes/{КОД}
-   (его создаёт владелец сайта в консоли). Код — часть пути, поэтому проверка не зависит от условий запроса. */
+/* site62: общий рейтинг лежит в leaders/{uid}. Читать и писать могут все, у кого есть вход: Google или гостевой (анонимный). */
 const FS_ROOT = 'projects/kitayskiy-5/databases/(default)/documents';
 const FS_HOST = 'https://firestore.googleapis.com/v1/';
-const fsBase = () => { if(!st.gcode) throw new Error('nocode'); return FS_HOST + FS_ROOT + '/groups/' + st.gcode + '/leaders'; };
-const cleanCode = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 32);
-const CODE_MIN = 10;   // как в правилах Firestore: короткий код можно перебрать
+const fsBase = () => FS_HOST + FS_ROOT + '/leaders';
 const p2 = n => String(n).padStart(2, '0');
 // неделя = дата её понедельника (ГГГГ-ММ-ДД): по этому ключу считаются «минуты за неделю»
 function weekKey(){ const d = new Date(), wd = (d.getDay() + 6) % 7, m = new Date(d.getFullYear(), d.getMonth(), d.getDate() - wd); return m.getFullYear() + '-' + p2(m.getMonth() + 1) + '-' + p2(m.getDate()); }
@@ -2890,7 +2886,35 @@ function wkTick(){ const w = weekKey(); if(!st.wk || st.wk.w !== w){ archiveWeek
 function wkKnown57(){ if(st.wk && st.wk.w === weekKey()) st.wk.m = Math.min(knownCount(), WCAP); }
 const wkSec = () => (st.wk && st.wk.w === weekKey()) ? st.wk.s : 0;
 const knownCount = () => WORD_DECK.filter(w => memState(w.id) === 'know').length;
-const rUser = () => (window.hzGetUser && window.hzGetUser()) || null;
+/* ===== гость (site62): рейтинг без входа =====
+   Гостю выдаётся анонимная учётная запись Firebase через REST (в подключённой библиотеке анонимного входа нет). Данные рейтинга считаются из
+   локального состояния st, поэтому после входа через Google результат переносится сам: строка гостя удаляется, строка аккаунта пишется заново.
+   Токен гостя лежит в localStorage (hz5guest). Нужно, чтобы в консоли Firebase был включён вход «Anonymous». */
+const GUEST_KEY = 'hz5guest', FB_KEY = 'AIzaSyCdzaep0UYPiGLEZAkkOIKiCcj_81IEVOA';
+let GUEST = (() => { try{ return JSON.parse(localStorage.getItem(GUEST_KEY) || 'null'); }catch(e){ return null; } })();
+const guestSave = g => { GUEST = g; try{ if(g) localStorage.setItem(GUEST_KEY, JSON.stringify(g)); else localStorage.removeItem(GUEST_KEY); }catch(e){} };
+async function guestToken(){
+  if(!GUEST) throw new Error('noguest');
+  if(GUEST.exp > Date.now() + 60000) return GUEST.it;
+  const r = await fetch('https://securetoken.googleapis.com/v1/token?key=' + FB_KEY, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'grant_type=refresh_token&refresh_token=' + encodeURIComponent(GUEST.rt) });
+  if(!r.ok) throw new Error('guest' + r.status);
+  const j = await r.json(); guestSave({ uid: j.user_id, rt: j.refresh_token, it: j.id_token, exp: Date.now() + (+j.expires_in || 3600) * 1000 });
+  return GUEST.it;
+}
+async function guestCreate(){
+  const r = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=' + FB_KEY, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ returnSecureToken: true }) });
+  if(!r.ok) throw new Error('guest' + r.status);
+  const j = await r.json(); guestSave({ uid: j.localId, rt: j.refreshToken, it: j.idToken, exp: Date.now() + (+j.expiresIn || 3600) * 1000 });
+  return GUEST;
+}
+const guestUser13 = () => GUEST ? { uid: GUEST.uid, displayName: '', guest: true, getIdToken: guestToken } : null;
+const rUser = () => (window.hzGetUser && window.hzGetUser()) || guestUser13();
+// человек вошёл через Google: строку гостя удаляем (токен гостя ещё действует), гостя забываем; строку аккаунта рейтинг запишет сам из локальных данных
+window.hzGuestMerge13 = async () => {
+  if(!GUEST) return;
+  try{ const tok = await guestToken(); await fetch(FS_HOST + FS_ROOT + '/leaders/' + GUEST.uid, { method: 'DELETE', headers: { Authorization: 'Bearer ' + tok } }); }catch(e){}
+  guestSave(null); PUB = null;
+};
 async function fsReq(method, path, body){
   const u = rUser(); if(!u) throw new Error('nouser');
   const tok = await u.getIdToken();
@@ -2910,29 +2934,29 @@ const FS_FIELDS = ['n', 'g', 'w', 's', 'k', 'm', 'l', 'p', 't'];   // поля, 
 // определяем режим: 'create' (строки нет или другая неделя: пишем целиком, сервер ставит новое b) или 'update' (та же неделя: b остаётся)
 async function pubState(u){
   const w = weekKey();
-  if(PUB && PUB.w === w && PUB.uid === u.uid && PUB.g === st.gcode) return PUB;
+  if(PUB && PUB.w === w && PUB.uid === u.uid) return PUB;
   let mode = 'create', s0 = 0;
   try{
     const d = await fsReq('GET', '/' + u.uid), f = d.fields || {};
     if(f.w && f.w.stringValue === w && f.b && f.s){ mode = 'update'; s0 = +f.s.integerValue || 0; }
   }catch(e){ if(!/http404/.test(String(e))) throw e; }   // 404 = строки нет; сеть или 403 — не публикуем, чтобы не затереть чужой результат
-  return (PUB = { w, uid: u.uid, g: st.gcode, mode, s: s0, t: Date.now() });
+  return (PUB = { w, uid: u.uid, mode, s: s0, t: Date.now() });
 }
 async function publishMe(){
   if(PUBP) return PUBP;                                   // уже идёт отправка (интервал и экран рейтинга не гонятся друг с другом)
   return (PUBP = (async () => {
-    const u = rUser(); if(!u || !st.rate || !st.nick || !st.gcode) return false;
+    const u = rUser(); if(!u || !st.rate || !st.nick) return false;
     try{
       const ps = await pubState(u), want = Math.min(wkSec(), 360000);
       const cap = ps.mode === 'create' ? S_FIRST : ps.s + Math.floor((Date.now() - ps.t) / 1000);
       const s = Math.max(0, Math.min(want, cap)), doc = myDoc(s);
-      const w = { update: { name: FS_ROOT + '/groups/' + st.gcode + '/leaders/' + u.uid, fields: doc.fields } };
+      const w = { update: { name: FS_ROOT + '/leaders/' + u.uid, fields: doc.fields } };
       if(ps.mode === 'create') w.updateTransforms = [{ fieldPath: 'b', setToServerValue: 'REQUEST_TIME' }];   // commit, а не PATCH: нужно серверное время
       else w.updateMask = { fieldPaths: FS_FIELDS };                                                              // b не в маске → остаётся прежним
       const tok = await u.getIdToken();
       const r = await fetch(FS_HOST + FS_ROOT + ':commit', { method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }, body: JSON.stringify({ writes: [w] }) });
       if(!r.ok) throw new Error('http' + r.status);
-      PUB = { w: weekKey(), uid: u.uid, g: st.gcode, mode: 'update', s, t: Date.now() };
+      PUB = { w: weekKey(), uid: u.uid, mode: 'update', s, t: Date.now() };
       return true;
     }catch(e){ PUB = null; return false; }                // при отказе в следующий раз заново узнаем состояние строки
   })().finally(() => { PUBP = null; }));
@@ -3212,7 +3236,7 @@ function lessonsFull10(){
 // Готовность = среднее двух долей: (уроки ÷ NL + топики ÷ 5) ÷ 2, NL = 15. Пример: 6 уроков и 2 топика → (6 ÷ 15 + 2 ÷ 5) ÷ 2 = (0,4 + 0,4) ÷ 2 = 0,4 → 40%.
 const ready10 = (l, p) => Math.round(100 * (l / NL + p / 5) / 2);
 function myDoc(sec){
-  return { fields: { n: { stringValue: st.nick }, g: { stringValue: st.gcode }, w: { stringValue: weekKey() }, s: intF(Math.min(sec == null ? wkSec() : sec, 360000)), k: intF(Math.min(streakNow(), 1000)), m: intF(Math.min(knownCount(), WCAP)), l: intF(lessonsFull10()), p: intF(topicsDone10()), t: intF(Date.now()) } };
+  return { fields: { n: { stringValue: st.nick }, w: { stringValue: weekKey() }, s: intF(Math.min(sec == null ? wkSec() : sec, 360000)), k: intF(Math.min(streakNow(), 1000)), m: intF(Math.min(knownCount(), WCAP)), l: intF(lessonsFull10()), p: intF(topicsDone10()), t: intF(Date.now()) } };
 }
 async function loadBoard(){
   /* site45: Firestore отдаёт список страницами; раньше читалась только первая (100 записей), участники дальше пропадали.
@@ -3231,28 +3255,29 @@ let RT10 = 'wk';   // site62: вкладки «Неделя» (по умолча
 async function renderRating11(){
   const box = document.getElementById('rating'); if(!box) return;
   const u = rUser();
-  const head = '<div class="rhead"><b>Рейтинг группы</b></div>';
-  if(!u){
-    box.innerHTML = head + '<p class="small">Чтобы участвовать, войди через Google. В рейтинге видны только ник, пройденные уроки, выученные топики, слова, минуты за неделю и серия.</p><button class="b pri" id="rlogin">Войти через Google</button>';
-    $('#rlogin').onclick = () => { const a = document.getElementById('acct'); if(a) a.click(); }; return;
-  }
-  if(!st.rate || !st.gcode){
-    // site62: нужен код группы (его даёт владелец сайта). Без него правила базы не пускают ни читать, ни писать.
-    const first = st.nick || cleanNick(((u.displayName || '').split(' ')[0]) || '');
-    box.innerHTML = head + '<p class="small">Участие по желанию. Нужен код группы: его дал тот, кто пригласил. Другие увидят ник, пройденные уроки, выученные топики, слова, минуты за неделю и серию. Почту и фамилию не показываем. Выйти можно в любой момент.</p>' +
+  const head = '<div class="rhead"><b>Общий рейтинг</b></div>';
+  if(!st.rate || !u){
+    // site62: общий рейтинг без кода. Участвовать можно гостем (без входа) или после входа через Google.
+    const gU = window.hzGetUser && window.hzGetUser();
+    const first = st.nick || cleanNick((((u && u.displayName) || '').split(' ')[0]) || '');
+    box.innerHTML = head + '<p class="small">Участие по желанию: все участники в одном общем рейтинге. Другие увидят ник, пройденные уроки, выученные топики, слова, минуты за неделю и серию. Почту и фамилию не показываем. Можно участвовать гостем, без входа: если потом войдёшь через Google, ник и результат перейдут на аккаунт. Выйти из рейтинга можно в любой момент.</p>' +
       '<input type="text" id="rnick" maxlength="20" placeholder="Твой ник" value="' + esc(first) + '" style="font-size:18px;margin:8px 0">' +
-      '<input type="text" id="rcode" maxlength="32" autocapitalize="characters" autocomplete="off" placeholder="Код группы" value="' + esc(st.gcode || '') + '" style="font-size:18px;margin:8px 0"><button class="b pri" id="rjoin">Участвовать</button>';
+      '<div class="row"><button class="b pri" id="rjoin">' + (gU ? 'Участвовать' : 'Участвовать гостем') + '</button>' + (gU ? '' : '<button class="b" id="rlogin">Войти через Google</button>') + '</div>';
+    const lg = $('#rlogin'); if(lg) lg.onclick = () => { const a = document.getElementById('acct'); if(a) a.click(); };
     $('#rjoin').onclick = async () => {
       const n = cleanNick($('#rnick').value); if([...n].length < 2){ toast('Ник: от 2 до 20 знаков'); return; }   // site52: считаем знаки как правила Firestore (эмодзи = 1), не единицы UTF-16
-      const c = cleanCode($('#rcode').value); if(c.length < CODE_MIN){ toast('Код группы: от 10 знаков, латиница и цифры'); return; }
-      st.nick = n; st.gcode = c; st.rate = true; PUB = null; save();
-      if(!(await publishMe())){ st.rate = false; save(); toast('Код не подошёл или нет связи. Проверь код и попробуй ещё раз'); }
+      st.nick = n; st.rate = true; PUB = null; save();
+      if(!rUser()){
+        try{ await guestCreate(); }
+        catch(e){ st.rate = false; save(); toast(/guest400/.test(String(e)) ? 'Гостевой вход выключен в настройках сайта. Войди через Google.' : 'Не получилось войти гостем: проверь интернет или войди через Google.'); renderRating(); return; }
+      }
+      if(!(await publishMe())){ st.rate = false; save(); toast('Не удалось записать результат. Проверь интернет и попробуй ещё раз'); }
       renderRating();
     }; return;
   }
   box.innerHTML = head + '<p class="small">Загружаю…</p>';
   await publishMe();
-  let rows; try{ rows = await loadBoard(); }catch(e){ box.innerHTML = head + '<p class="small">' + (/http403/.test(String(e)) ? 'Нет доступа: код группы не подошёл или правила базы ещё не обновлены. Выйди из рейтинга и войди с верным кодом.' : 'Не удалось загрузить. Проверь интернет и нажми «Обновить».') + '</p><div class="row"><button class="b" id="rref">Обновить</button><button class="b" id="rout">Выйти из рейтинга</button></div>'; wireRating(); return; }
+  let rows; try{ rows = await loadBoard(); }catch(e){ box.innerHTML = head + '<p class="small">' + (/http403/.test(String(e)) ? 'Нет доступа к рейтингу: правила базы ещё не обновлены.' : 'Не удалось загрузить. Проверь интернет и нажми «Обновить».') + '</p><div class="row"><button class="b" id="rref">Обновить</button><button class="b" id="rout">Выйти из рейтинга</button></div>'; wireRating(); return; }
   const all = RT10 === 'all';
   rows.sort(all ? (a, b) => b.r - a.r || b.p - a.p || b.l - a.l || b.m - a.m : (a, b) => b.s - a.s || b.k - a.k || b.m - a.m);
   const tab = '<div class="seg rtab" role="tablist"><button data-rt="wk" class="' + (all ? '' : 'on') + '">Неделя</button><button data-rt="all" class="' + (all ? 'on' : '') + '">Знания</button></div>';
@@ -3264,7 +3289,8 @@ async function renderRating11(){
   const note = all
     ? '<p class="small">«Готов» = (уроки ÷ 15 + топики ÷ 5) ÷ 2. Пример: 6 уроков и 2 топика → (6 ÷ 15 + 2 ÷ 5) ÷ 2 = (0,4 + 0,4) ÷ 2 = 0,4 → 40%. Урок засчитан, когда пройдены все его разделы; топик — когда рассказан наизусть (не меньше 90% строк). «Слов» — слова, которые ты ответил верно и следующий повтор не раньше чем через 3 дня; при равной готовности выше тот, у кого больше слов.</p>'
     : '<p class="small">Неделя с ' + wkLabel() + '. Минуты — время активной работы на сайте (простой больше 20 секунд не считается).</p>';
-  box.innerHTML = head + tab + '<table class="rt">' + th + tr + '</table>' + note + '<div class="row"><button class="b" id="rref">Обновить</button><button class="b" id="rout">Выйти из рейтинга</button></div>';
+  const gnote = u.guest ? '<p class="small">Ты участвуешь как гость. Войди через Google (кнопка в шапке): ник и результат перейдут на аккаунт.</p>' : '';
+  box.innerHTML = head + tab + '<table class="rt">' + th + tr + '</table>' + note + gnote + '<div class="row"><button class="b" id="rref">Обновить</button><button class="b" id="rout">Выйти из рейтинга</button></div>';
   box.querySelector('.rtab').onclick = e => { const b = e.target.closest('[data-rt]'); if(!b) return; RT10 = b.dataset.rt; renderRating(); };
   wireRating();
 }
@@ -5020,7 +5046,7 @@ window.addEventListener('load', async () => {
       appId: '1:960274486088:web:2432aec236d3455cf8997d'
     });
     auth = FBX.getAuth(app); db = FBX.getFirestore(app);
-    FBX.onAuthStateChanged(auth, u => { user = u; synced = false; clearTimeout(pushT); if(u) pullMerge(); else label('Войти через Google', 'Войти'); if(window.hzAuthReady) window.hzAuthReady(u); });
+    FBX.onAuthStateChanged(auth, u => { user = u; synced = false; clearTimeout(pushT); if(u){ pullMerge(); if(window.hzGuestMerge13) window.hzGuestMerge13(); } else label('Войти через Google', 'Войти'); if(window.hzAuthReady) window.hzAuthReady(u); });
     if(FBX.getRedirectResult) FBX.getRedirectResult(auth).catch(() => {});   // если вход шёл через переадресацию (запасной путь)
     return true;
   }
