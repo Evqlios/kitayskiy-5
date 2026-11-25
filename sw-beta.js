@@ -27,7 +27,7 @@ self.addEventListener('fetch', e => {
     // сеть первой, но не дольше 5 с и только если ответ исправный; иначе копия страницы ЭТОЙ версии из кэша
     // (для "./" и index.html онлайн отдаётся настоящий index.html — он перекинет на актуальную версию; в кэш он не кладётся)
     const fromCache = () => caches.open(CACHE).then(c => c.match(PAGE));
-    const net = fetch(r).then(res => { if(here === PAGE && res && res.ok){ const cp = res.clone(); caches.open(CACHE).then(c => c.put(PAGE, cp)); } return res; });
+    const net = fetch(r.url, { cache: 'no-cache' }).then(res => { if(here === PAGE && res && res.ok){ const cp = res.clone(); caches.open(CACHE).then(c => c.put(PAGE, cp)); } return res; });
     const slow = new Promise(res => setTimeout(() => res(null), 5000));
     e.respondWith(Promise.race([net, slow]).then(res => (res && res.status < 500) ? res : fromCache().then(m => m || net)).catch(() => fromCache().then(m => m || Response.error())));
     return;
