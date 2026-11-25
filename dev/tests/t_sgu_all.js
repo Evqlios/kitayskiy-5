@@ -1,7 +1,7 @@
 const { chromium } = require('playwright');
 (async () => {
   const b = await chromium.launch(); const p = await b.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
-  await p.goto('file:///home/user/kitayskiy-5/site62.html'); await p.waitForTimeout(1200);
+  await p.goto(require('./cur.js').URL); await p.waitForTimeout(1200);
   const r = await p.evaluate(() => {
     const out = { n: 0, bad: [], kinds: {} };
     for (const e of D.sgu.filter(x => x.L >= 11)) {

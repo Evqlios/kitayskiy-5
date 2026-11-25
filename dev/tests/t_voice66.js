@@ -1,7 +1,7 @@
 // Голоса (site66): список из 5 голосов на экране входа и в настройках, сохранение выбора, ключи наборов, голоса в ролях по полу.
 // Запуск: node t_voice66.js [url]
 const { chromium } = require('playwright');
-const FILE = process.argv[2] || 'file:///home/user/kitayskiy-5/site66.html';
+const FILE = process.argv[2] || require('./cur.js').URL;
 (async () => {
   const b = await chromium.launch(); const out = {}; const ctx = await b.newContext({ viewport: { width: 390, height: 844 } }); const p = await ctx.newPage();
   const errs = []; p.on('pageerror', e => errs.push(e.message));

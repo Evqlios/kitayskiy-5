@@ -4,7 +4,7 @@ const { chromium } = require('playwright');
   for (const [name, vp] of [['mob', { width: 390, height: 844 }], ['desk', { width: 1380, height: 800 }]]) {
     const ctx = await b.newContext({ viewport: vp, colorScheme: 'dark' }); const p = await ctx.newPage();
     const errs = []; p.on('pageerror', e => errs.push(e.message));
-    await p.goto('file:///home/user/kitayskiy-5/site62.html'); await p.waitForTimeout(1200);
+    await p.goto(require('./cur.js').URL); await p.waitForTimeout(1200);
     await p.evaluate(() => { document.getElementById('welcome')?.remove(); localStorage.setItem('hz5how', '1'); }); await p.reload(); await p.waitForTimeout(1000); await p.evaluate(() => document.getElementById('welcome')?.remove());
     await p.evaluate(() => { document.querySelector('[data-tab="study"]').click(); });
     await p.waitForTimeout(300);

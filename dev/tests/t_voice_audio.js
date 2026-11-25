@@ -7,7 +7,7 @@ const { chromium } = require('playwright'); const { spawn } = require('child_pro
   await new Promise(r => setTimeout(r, 800));
   const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] }); const out = {}; const ctx = await b.newContext({ viewport: { width: 390, height: 844 } }); const p = await ctx.newPage();
   const errs = []; p.on('pageerror', e => errs.push(e.message));
-  await p.goto('http://localhost:8765/site67.html'); await p.evaluate(() => localStorage.setItem('hz5how', '1')); await p.reload(); await p.waitForTimeout(1200);
+  await p.goto('http://localhost:8765/'+require('./cur.js').NAME+''); await p.evaluate(() => localStorage.setItem('hz5how', '1')); await p.reload(); await p.waitForTimeout(1200);
   await p.evaluate(() => { window.__tts = 0; window.SpeechSynthesisUtterance = function(t){ this.text = t; }; speechSynthesis.speak = () => { window.__tts++; }; });
   const AIDX_V_ID = await p.evaluate(() => AIDX.fn);
   const cases = [['w213', null, 'новое слово из тетради'], ['w001', '你', 'старое слово'], ['s001', '你们好！', 'старое предложение'], ['w120', null, 'новое слово (урок 11)'], [Object.keys(AIDX_V_ID).find(i => /^d1[1-5]_/.test(i)) || 'd11_1', null, 'строка диалога урока 11–15']];

@@ -2,7 +2,7 @@ const { chromium } = require('playwright');
 (async () => {
   const b = await chromium.launch(); const out = {}; const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, colorScheme: 'dark' }); const p = await ctx.newPage();
   const errs = []; p.on('pageerror', e => errs.push(e.message));
-  await p.goto('file:///home/user/kitayskiy-5/site62.html'); await p.waitForTimeout(800);
+  await p.goto(require('./cur.js').URL); await p.waitForTimeout(800);
   await p.evaluate(() => { localStorage.setItem('hz5how', '1'); }); await p.reload(); await p.waitForTimeout(1000);
   await p.evaluate(() => { document.getElementById('welcome')?.remove(); window.__sent = []; window.hzReport = async (k, o) => { window.__sent.push([k, o.t]); return true; }; st.nick = 'Тест'; });
   out.icon = {};

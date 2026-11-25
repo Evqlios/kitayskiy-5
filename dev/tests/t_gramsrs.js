@@ -1,6 +1,6 @@
 // Повторение правил (site66): «Разминка» добавляет задания gr/pn из прошлых уроков, у которых срок повтора наступил
 const { chromium } = require('playwright');
-const FILE = process.argv[2] || 'file:///home/user/kitayskiy-5/site66.html';
+const FILE = process.argv[2] || require('./cur.js').URL;
 (async () => {
   const b = await chromium.launch(); const out = {}; const p = await (await b.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   const errs = []; p.on('pageerror', e => errs.push(e.message));

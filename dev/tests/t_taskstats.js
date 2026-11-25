@@ -1,6 +1,6 @@
 // Статистика заданий (site63): очередь, отправка :commit с increment, лимит 50, просмотр #taskstats
 const { chromium } = require('playwright');
-const FILE = process.argv[2] || 'file:///home/user/kitayskiy-5/site63.html';
+const FILE = process.argv[2] || require('./cur.js').URL;
 (async () => {
   const b = await chromium.launch(); const out = {}; const ctx = await b.newContext({ viewport: { width: 390, height: 844 } }); const p = await ctx.newPage();
   const errs = []; p.on('pageerror', e => errs.push(e.message));

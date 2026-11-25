@@ -1,6 +1,6 @@
 // Итоговый тест (site66): в каждом уроке 1–15 добавлены фразы из диалога/текста; тест собирается без ошибок
 const { chromium } = require('playwright');
-const FILE = process.argv[2] || 'file:///home/user/kitayskiy-5/site66.html';
+const FILE = process.argv[2] || require('./cur.js').URL;
 (async () => {
   const b = await chromium.launch(); const p = await (await b.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   const errs = []; p.on('pageerror', e => errs.push(e.message));

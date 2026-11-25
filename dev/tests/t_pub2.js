@@ -2,7 +2,7 @@ const { chromium } = require('playwright');
 (async () => {
   const b = await chromium.launch(); const p = await b.newPage();
   const errs = []; p.on('pageerror', e => errs.push(e.message));
-  await p.goto('file:///home/user/kitayskiy-5/site62.html'); await p.waitForTimeout(1500);
+  await p.goto(require('./cur.js').URL); await p.waitForTimeout(1500);
   const res = await p.evaluate(async () => {
     const out = {}; let now = Date.now(), fail = null, doc = null; const log = [];
     Date.now = () => now;                                     // управляемые часы
