@@ -1,11 +1,11 @@
-/* Service worker страницы site69 (офлайн). Создан сборкой из v30/sw.template.js; публикуется рядом со страницей как sw-site69.js.
+/* Service worker страницы beta.html (офлайн; прежние версии siteNN заменяет и чистит их кэши). Создан сборкой из v30/sw.template.js; публикуется рядом со страницей как sw-beta.js.
    site51: область = ВСЯ папка сайта (раньше — только адрес страницы), чтобы запуск с иконки на экране телефона (manifest start_url "./",
    то есть index.html, который лишь перекидывает на страницу) открывался без сети: на запрос "./" и "index.html" без сети отдаётся кэш страницы этой версии.
    Страница siteNN.html: сеть первой (обновления не залипают), без сети — копия из кэша. Другие siteNN.html (старые версии) воркер не трогает.
    Звуковые пакеты pack2_*.mp3 и иконки: из кэша, если уже скачаны. Каждая новая версия регистрирует свой sw-siteNN.js в той же области и заменяет прежний. */
-const CACHE = 'hz5-site69';
+const CACHE = 'hz5-beta';
 const SCOPE = self.registration.scope;                // адрес папки сайта, с «/» на конце
-const PAGE = new URL('site69.html', SCOPE).href;     // страница этой версии
+const PAGE = new URL('beta.html', SCOPE).href;       // страница этой версии
 const ROOTS = [SCOPE, SCOPE + 'index.html'];          // то, на что ведёт иконка (start_url "./")
 const STATIC = /\/(pack2_(?:[nms]|[fxyjbe][nms])\.mp3|icon-\d+\.png|manifest\.webmanifest)$/;
 self.addEventListener('install', e => {
@@ -14,7 +14,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   // site46: чистим кэши СТАРЫХ версий (hz5-siteNN с меньшим NN) — раньше они копились на телефоне вечно (страница ~1 МБ на каждую версию).
   // Свой кэш, кэши более новых версий и любые чужие имена (не hz5-siteNN) не трогаем.
-  const mine = +/site(\d+)$/.exec(CACHE)[1];
+  const mine = Infinity;                                  // Beta новее любого siteNN: чистим ВСЕ кэши hz5-siteNN
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.map(k => { const m = /^hz5-site(\d+)$/.exec(k); return (m && +m[1] < mine) ? caches.delete(k) : null; }))).then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', e => {
@@ -47,7 +47,8 @@ self.addEventListener('fetch', e => {
       const buf = await m.blob(), mt = /^bytes=(\d*)-(\d*)$/.exec(r.headers.get('range') || '');
       if(!mt) return fetch(r);
       const size = buf.size, a = mt[1] === '' ? Math.max(0, size - +mt[2]) : +mt[1], b = mt[1] === '' || mt[2] === '' ? size - 1 : Math.min(+mt[2], size - 1);
-      if(a > b || a >= size) return new Response(null, { status: 416, headers: { 'Content-Range': 'bytes */' + size } });
+      if(a >= size) return fetch(r);                    // site70: в кэше старый, более короткий набор (новые клипы дописаны в конец) — этот кусок берём у сети
+      if(a > b) return new Response(null, { status: 416, headers: { 'Content-Range': 'bytes */' + size } });
       return new Response(buf.slice(a, b + 1), { status: 206, headers: { 'Content-Type': m.headers.get('Content-Type') || 'audio/mpeg', 'Content-Range': 'bytes ' + a + '-' + b + '/' + size, 'Content-Length': String(b - a + 1), 'Accept-Ranges': 'bytes' } });
     }));
   }
