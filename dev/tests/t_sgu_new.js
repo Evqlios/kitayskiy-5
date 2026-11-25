@@ -19,6 +19,7 @@ const IDS = JSON.parse(fs.readFileSync(cur.ROOT + '/dev/data_sgu/new_ids.json', 
         if (!t.pyp) t.tiles.forEach(x => { if (!x.p) out.noTpy[x.t] = (out.noTpy[x.t] || 0) + 1; });
       }
       if (!(e.src || '').startsWith('СГУ')) out.problems.push(id + ' src');
+      if (t.audio) { out.audio = (out.audio || 0) + 1; Object.keys(AIDX_V).forEach(k => { if (!AIDX_V[k][t.audio.id]) out.problems.push(id + ': нет записи ' + t.audio.id + ' в наборе ' + k); }); }   // озвучка: во всех 15 наборах
     });
     const gids = new Set(D.gram.concat(D.phon).map(x => x.id));
     ids.gram.concat(ids.phon).forEach(id => { if (!gids.has(id)) out.problems.push('нет вопроса ' + id); });

@@ -47,7 +47,8 @@ self.addEventListener('fetch', e => {
       const buf = await m.blob(), mt = /^bytes=(\d*)-(\d*)$/.exec(r.headers.get('range') || '');
       if(!mt) return fetch(r);
       const size = buf.size, a = mt[1] === '' ? Math.max(0, size - +mt[2]) : +mt[1], b = mt[1] === '' || mt[2] === '' ? size - 1 : Math.min(+mt[2], size - 1);
-      if(a > b || a >= size) return new Response(null, { status: 416, headers: { 'Content-Range': 'bytes */' + size } });
+      if(a >= size) return fetch(r);                    // site70: в кэше старый, более короткий набор (новые клипы дописаны в конец) — этот кусок берём у сети
+      if(a > b) return new Response(null, { status: 416, headers: { 'Content-Range': 'bytes */' + size } });
       return new Response(buf.slice(a, b + 1), { status: 206, headers: { 'Content-Type': m.headers.get('Content-Type') || 'audio/mpeg', 'Content-Range': 'bytes ' + a + '-' + b + '/' + size, 'Content-Length': String(b - a + 1), 'Accept-Ranges': 'bytes' } });
     }));
   }
