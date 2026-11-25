@@ -3146,7 +3146,7 @@ function viewTList10(){
       '<div class="t10p" aria-label="Шаги">' + steps + '</div>' +
       '<div class="t10a"><button class="b' + (t === rec ? ' pri' : '') + '" data-go10="' + t + ':' + next + '">' + label + '</button><button class="t10l" data-ex10="' + t + '">Другие упражнения</button></div></section>';
   }).join('');
-  h += '<p class="small" style="margin-top:16px">Шаги: 1 — читать и слушать, 2 — вставить пропущенные слова, 3 — вспомнить фразу по русскому тексту, 4 — рассказать весь топик вслух и отметить, что получилось. Топик считается выученным, если верно не меньше 90% строк (например, 8 из 9: 8 ÷ 9 = 0,89 — ещё нет, 9 из 9 — да).</p>';
+  h += '<p class="small" style="margin-top:16px">Шаги: 1 — читать и слушать, 2 — вставить пропущенные слова, 3 — вспомнить фразу по русскому тексту, 4 — рассказать топик вслух и отметить, что получилось (с топика 2 рассказываем подряд: 1; потом 1, 2; потом 1, 2, 3 и так далее). Топик считается выученным, если верно не меньше 90% строк (например, 8 из 9: 8 ÷ 9 = 0,89 — ещё нет, 9 из 9 — да).</p>';
   view.innerHTML = h;
   view.onclick = e => {
     const g = e.target.closest('[data-go10]'); if(g){ const [t, s] = g.dataset.go10.split(':').map(Number); TL10.t = t; TL10.step = s; TL10.mode = 'learn'; viewTopic(); return; }
@@ -3250,36 +3250,48 @@ function t10Recall(box, L, t, only){
   $('#t10go').onclick = show;
 }
 
-// шаг 4: рассказать весь топик
+// шаг 4: рассказать весь топик. Beta: с топика 2 по умолчанию рассказываем ПОДРЯД топики 1…N (1; потом 1, 2; потом 1, 2, 3 …), переключатель можно снять
 function t10Tell(box, L, t){
   const o = tlGet(t);
+  if(TL10.cumTellT !== t){ TL10.cumTell = t > 1; TL10.cumTellT = t; }
+  const groups = () => (TL10.cumTell && t > 1 ? Array.from({ length: t }, (_, i) => i + 1) : [t]).map(k => ({ k, L: k === t ? L : tSents10(k) }));
+  const flatOf = gs => gs.reduce((a, g) => a.concat(g.L.map(s => ({ s, k: g.k }))), []);
   const plan = () => {
-    box.innerHTML = '<p class="t10i">Расскажи весь топик вслух, без подсказок. Опора — русский план. Потом откроешь китайский текст и отметишь каждую строку.</p>' +
-      '<div class="card t10plan">' + L.map((s, k) => '<div><b>' + (k + 1) + '.</b> ' + esc(s.ru) + '</div>').join('') + '</div>' +
-      (o.d ? '<p class="small">Выучен ' + new Date(o.d).toLocaleDateString('ru-RU') + ', результат ' + o.p + '%.</p>' : '') +
+    const gs = groups(), cum = gs.length > 1;
+    box.innerHTML = '<p class="t10i">' + (cum ? 'Расскажи вслух подряд: сначала топик 1, потом 2' + (t > 2 ? ', … до топика ' + t : '') + '. Без подсказок, опора — русский план. Потом откроешь китайский текст и отметишь каждую строку.' : 'Расскажи весь топик вслух, без подсказок. Опора — русский план. Потом откроешь китайский текст и отметишь каждую строку.') + '</p>' +
+      (t > 1 ? '<div class="sw"><label><input type="checkbox" id="t10cum" ' + (cum ? 'checked' : '') + '> рассказать подряд: топики 1…' + t + '</label></div>' : '') +
+      gs.map(g => '<div class="card t10plan">' + (cum ? '<div class="lbl">Топик ' + g.k + ' · ' + esc(TNAME10[g.k]) + '</div>' : '') + g.L.map((s, k) => '<div><b>' + (k + 1) + '.</b> ' + esc(s.ru) + '</div>').join('') + '</div>').join('') +
+      (o.d ? '<p class="small">Топик ' + t + ' выучен ' + new Date(o.d).toLocaleDateString('ru-RU') + ', результат ' + o.p + '%.</p>' : '') +
       '<div class="row t10act"><button class="b pri" id="t10chk">Я рассказал — проверить</button></div>';
+    const cb = $('#t10cum'); if(cb) cb.onchange = e => { TL10.cumTell = e.target.checked; plan(); };
     $('#t10chk').onclick = check;
   };
   const check = () => {
-    const mark = L.map(() => null);
+    const gs = groups(), items = flatOf(gs), cum = gs.length > 1, mark = items.map(() => null);
     const draw = () => {
-      const done = mark.filter(x => x !== null).length;
+      const done = mark.filter(x => x !== null).length; let last = 0;
       box.innerHTML = '<p class="t10i">Сравни с тем, что сказал. Отметь каждую строку.</p>' +
-        L.map((s, k) => '<div class="card t10line">' + sentHP(s) + '<div class="ru">' + esc(s.ru) + '</div>' +
+        items.map((it, k) => (cum && it.k !== last ? (last = it.k, '<div class="lbl" style="margin:14px 0 4px">Топик ' + it.k + ' · ' + esc(TNAME10[it.k]) + '</div>') : '') +
+          '<div class="card t10line">' + sentHP(it.s) + '<div class="ru">' + esc(it.s.ru) + '</div>' +
           '<button class="play sm" data-k="' + k + '" aria-label="Звук">🔊</button><div class="t10mk"><button class="b' + (mark[k] === true ? ' ok' : '') + '" data-m="' + k + ':1">Верно</button><button class="b' + (mark[k] === false ? ' pri' : '') + '" data-m="' + k + ':0">Ошибся</button></div></div>').join('') +
-        '<div class="row t10act"><button class="b pri" id="t10fin"' + (done < L.length ? ' disabled' : '') + '>' + (done < L.length ? 'Отмечено ' + done + ' из ' + L.length : 'Подвести итог') + '</button></div>';
-      box.querySelectorAll('.play').forEach(b => b.onclick = () => playItem(L[+b.dataset.k]));
+        '<div class="row t10act"><button class="b pri" id="t10fin"' + (done < items.length ? ' disabled' : '') + '>' + (done < items.length ? 'Отмечено ' + done + ' из ' + items.length : 'Подвести итог') + '</button></div>';
+      box.querySelectorAll('.play').forEach(b => b.onclick = () => playItem(items[+b.dataset.k].s));
       box.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { const [k, v] = b.dataset.m.split(':'); mark[+k] = v === '1'; const y = window.scrollY; draw(); window.scrollTo(0, y); });
-      $('#t10fin').onclick = () => result(mark);
+      $('#t10fin').onclick = () => result(items, mark, cum);
     };
     draw(); window.scrollTo(0, 0);
   };
-  const result = mark => {
-    const ok = mark.filter(Boolean).length, pct = Math.round(100 * ok / L.length), pass = pct >= 90;
-    if(pass){ tlSet(t, { s: 4, d: Date.now(), p: pct }); bumpStreak && bumpStreak(); updChip && updChip(); }
-    const weak = L.filter((s, k) => !mark[k]);
-    box.innerHTML = '<div class="res ' + (pass ? 'ok' : 'mid') + '">' + (pass ? 'Топик выучен' : 'Пока не выучен') + ': ' + ok + ' из ' + L.length + ' строк (' + ok + ' ÷ ' + L.length + ' = ' + pct + '%)</div>' +
-      '<p class="t10i">' + (pass ? 'Повтори рассказ через ' + TDUE10 + ' дней — напомню в списке топиков.' : 'Нужно не меньше 90%. Потренируй слабые строки и расскажи ещё раз.') + '</p>' +
+  const result = (items, mark, cum) => {
+    // итог по каждому топику отдельно; выученным топик считается при ≥90% его строк. При рассказе подряд топик t — главный, но прежние топики тоже обновляют срок повтора
+    const per = {}; items.forEach((it, k) => { const q = per[it.k] || (per[it.k] = { ok: 0, n: 0 }); q.n++; if(mark[k]) q.ok++; });
+    Object.keys(per).forEach(k => { per[k].pct = Math.round(100 * per[k].ok / per[k].n); });
+    const own = per[t], ok = own.ok, pct = own.pct, pass = pct >= 90;
+    Object.keys(per).forEach(k => { if(per[k].pct >= 90) tlSet(+k, { s: 4, d: Date.now(), p: per[k].pct }); });
+    if(pass){ bumpStreak && bumpStreak(); updChip && updChip(); }
+    const weak = items.filter((it, k) => !mark[k]).map(it => it.s);
+    box.innerHTML = '<div class="res ' + (pass ? 'ok' : 'mid') + '">' + (pass ? 'Топик ' + t + ' выучен' : 'Топик ' + t + ' пока не выучен') + ': ' + ok + ' из ' + own.n + ' строк (' + ok + ' ÷ ' + own.n + ' = ' + pct + '%)</div>' +
+      (cum ? '<div class="card"><div class="lbl">Итог по топикам</div>' + Object.keys(per).map(k => '<div class="t10weak"><b>Топик ' + k + '</b> · ' + esc(TNAME10[k]) + ': ' + per[k].ok + ' из ' + per[k].n + ' (' + per[k].pct + '%) ' + (per[k].pct >= 90 ? '✓' : 'ещё нет') + '</div>').join('') + '</div>' : '') +
+      '<p class="t10i">' + (pass ? 'Повтори рассказ через ' + TDUE10 + ' дней — напомню в списке топиков.' : 'Нужно не меньше 90%. Потренируй слабые строки и расскажи ещё раз.') + (pass && t < 5 ? ' Дальше — топик ' + (t + 1) + ': его рассказывают после топиков 1…' + t + '.' : '') + '</p>' +
       (weak.length ? '<div class="card"><div class="lbl">Слабые строки</div>' + weak.map(s => '<div class="t10weak"><span class="hz" style="font-size:22px">' + esc(s.hz) + '</span><div class="small">' + esc(s.ru) + '</div></div>').join('') + '</div>' : '') +
       '<div class="row t10act">' + (weak.length ? '<button class="b pri" id="t10wk">Потренировать слабые</button>' : '') + '<button class="b' + (weak.length ? '' : ' pri') + '" id="t10again">Рассказать ещё раз</button><button class="b" id="t10list">К списку топиков</button></div>';
     if(weak.length) $('#t10wk').onclick = () => { TL10.step = 3; viewLearn10(); t10Recall($('#t10body'), L, t, weak); };
