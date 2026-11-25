@@ -9,11 +9,13 @@ const { chromium } = require('playwright'); const cur = require('./cur.js');
     const isBuild = await p.evaluate(() => !!document.querySelector('#bchk'));
     if (isBuild) {
       found = true;
-      await p.click('#bchk'); await p.waitForTimeout(200);           // первая попытка: пустой ответ — неверно
+      await p.click('#bank .tok'); await p.waitForTimeout(100);       // кладём одну плитку: ответ не пустой и заведомо неверный (в ответе ≥2 плитки)
+      await p.click('#bchk'); await p.waitForTimeout(200);           // первая попытка — неверно
       await p.click('#bchk'); await p.waitForTimeout(300);           // вторая: разбор
       out.btn = await p.evaluate(() => { const x = document.querySelector('.alt13 button[data-rp="alt"]'); return x ? x.textContent : null; });
       if (!out.btn) out.problems.push('кнопки нет');
-      else { await p.click('.alt13 button[data-rp="alt"]'); await p.waitForTimeout(400); out.after = await p.evaluate(() => (document.querySelector('.alt13') || {}).innerText); if (!/Текст скопирован|Отправлено/.test(out.after || '')) out.problems.push('после нажатия: ' + out.after); }
+      else if (!/мой ответ|тоже верен/.test(out.btn)) out.problems.push('текст кнопки: ' + out.btn);
+      else { await p.click('.alt13 button[data-rp="alt"]'); await p.waitForTimeout(400); out.after = await p.evaluate(() => (document.querySelector('.alt13') || {}).innerText); if (!/Текст скопирован|Отправлено/.test(out.after || '') || /—\s*$/.test((out.after || '').trim())) out.problems.push('после нажатия (пустой ответ?): ' + out.after); }
     } else {
       await p.evaluate(() => { const o = document.querySelector('.opt'); if (o && !document.querySelector('.opt.ok,.opt.wrong,.opt.right')) o.click(); }); await p.waitForTimeout(150);
       await p.evaluate(() => { const bs = [...document.querySelectorAll('button')].filter(x => /Дальше|Далее/i.test(x.textContent)); if (bs[0]) bs[0].click(); }); await p.waitForTimeout(200);
