@@ -5,8 +5,6 @@ import json, glob, os, sys
 DATA = '/home/user/kitayskiy-5/dev/data_sgu'
 src = {l: json.load(open(f'{DATA}/{l}.json', encoding='utf-8')) for l in 'ABCD'}
 
-def key(e):
-    return f"{e['p']}/{e['n']}/{e['q'].strip()[:12]}" if 'p' in e else f"L{e['L']}/{e['q'].strip()[:20]}"
 
 default_file = {'review_A.json': 'A', 'review_B.json': 'B'}
 drop, fix, log = [], [], []
@@ -17,7 +15,7 @@ for f in sorted(glob.glob(DATA + '/review_*.json')):
         lab = v.get('file') or default_file.get(name)
         assert lab in src, (name, v)
         e = src[lab][v['array']][v['index']]
-        k = key(e)
+        k = f"{lab}.{v['array']}[{v['index']}]"
         if v['verdict'] == 'DROP': drop.append({'key': k})
         elif v['verdict'] == 'FIX': fix.append({'key': k, 'set': v['set']})
         else: sys.exit('неизвестный вердикт: %r' % v)

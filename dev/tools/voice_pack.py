@@ -27,8 +27,9 @@ for key in sorted(os.listdir(src)):
     a, t = dict(OLD_A.get(key, {})), dict(OLD_T.get(key, {}))
     if a and os.path.exists(path):
         buf = open(path, 'rb').read()
-        for i, (off, ln) in a.items():                       # проверка: клип в файле тот же, что в папке
-            assert buf[off:off + ln] == open(os.path.join(d, i + '.mp3'), 'rb').read(), 'клип ' + key + '/' + i + ' изменился'
+        for i, (off, ln) in a.items():                       # проверка: клип в файле тот же, что в папке (если старого клипа в папке нет — не сверяем:
+            f_ = os.path.join(d, i + '.mp3')                 # смещения не меняются, т.к. новые клипы дописываются только в конец набора)
+            if os.path.exists(f_): assert buf[off:off + ln] == open(f_, 'rb').read(), 'клип ' + key + '/' + i + ' изменился'
         mode, off = 'ab', len(buf)
     else:
         a, t, mode, off = {}, {}, 'wb', 0

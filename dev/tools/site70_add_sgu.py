@@ -32,8 +32,8 @@ for lab in os.environ.get('LABELS', 'ABCD'):
         print('нет файла', f); sys.exit(1)
     j = json.load(open(f, encoding='utf-8'))
     for k in raw:
-        for e in j.get(k, []):
-            e['_from'] = lab
+        for i, e in enumerate(j.get(k, [])):
+            e['_from'] = lab; e['_k'] = k; e['_i'] = i      # однозначный ключ правок критика: файл.массив[индекс]
             raw[k].append(e)
     skipped += j.get('skipped', [])
 
@@ -45,10 +45,8 @@ if os.path.exists(DATA + '/review_fix.json'):
 
 
 def key(e):
-    """Ключ записи для правок критика: p/n/первые 12 знаков вопроса (для gram/phon: L/первые 20 знаков)."""
-    if 'p' in e:
-        return f"{e['p']}/{e['n']}/{e['q'].strip()[:12]}"
-    return f"L{e['L']}/{e['q'].strip()[:20]}"
+    """Ключ записи для правок критика: файл оцифровщика, массив и индекс (например B.sgu[24])."""
+    return f"{e['_from']}.{e['_k']}[{e['_i']}]"
 
 
 problems = []
