@@ -18,12 +18,16 @@ const SHOT = process.env.SHOTDIR || '.';
     let seed = 99; const R = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; }, N = () => (R() + R() + R() + R() - 2) * 1.7;   // ≈ нормальный шум σ≈1
     const hand = ref => { const sx = .88 + R() * .24, sy = .88 + R() * .24, dx = (R() - .5) * 80, dy = (R() - .5) * 80;
       return ref.map(s => { const ox = N() * 22, oy = N() * 22; return wmResample(s, 24).map(([x, y]) => [512 + (x - 512) * sx + dx + ox + N() * 8, 512 + (y - 512) * sy + dy + oy + N() * 8]); }); };
-    const T = { n: 0, ok: 0, miss: 0, missOk: 0, swap: 0, swapOk: 0, rev: 0, revOk: 0 }, fails = [];
+    const T = { n: 0, ok: 0, miss: 0, missOk: 0, swap: 0, swapOk: 0, rev: 0, revOk: 0, split: 0, splitOk: 0, merge: 0, mergeOk: 0, tap: 0, tapOk: 0, hints: 0 }, fails = [];
     CHARS.forEach(c => { const ref = wlRef(c), n = ref.length;
       for(let rep = 0; rep < 3; rep++){
         T.n++; const r = wmCompare(hand(ref), ref); if(r.ok && r.seqOk && !r.dir.length) T.ok++; else fails.push(c.hz);
         if(n > 1){ const j = Math.floor(R() * n), u = hand(ref).filter((_, k) => k !== j), r2 = wmCompare(u, ref); T.miss++; if(r2.missing.length === 1 && r2.missing[0] === j && !r2.extra.length) T.missOk++;
           const k = Math.floor(R() * (n - 1)), u3 = hand(ref); [u3[k], u3[k + 1]] = [u3[k + 1], u3[k]]; const r3 = wmCompare(u3, ref); T.swap++; if(r3.ok && !r3.seqOk) T.swapOk++; }
+        { const r0 = wmCompare(hand(ref), ref); if(r0.ok && (!r0.seqOk || r0.dir.length)) T.hints++; }   // ложные подсказки о порядке/направлении при верном почерке
+        { const Ls = ref.map((s, i) => wmLen(s) >= 300 ? i : -1).filter(i => i >= 0); if(Ls.length){ const j = Ls[Math.floor(R() * Ls.length)], uu = hand(ref), s = uu[j], cut = Math.floor(s.length * (.35 + R() * .3)); uu.splice(j, 1, s.slice(0, cut + 1), s.slice(cut)); T.split++; if(wmCompare(uu, ref).ok) T.splitOk++; } }   // черта в два касания
+        { const Ms = []; for(let j = 0; j + 1 < n; j++) if(Math.hypot(ref[j][ref[j].length - 1][0] - ref[j + 1][0][0], ref[j][ref[j].length - 1][1] - ref[j + 1][0][1]) < 140) Ms.push(j); if(Ms.length){ const j = Ms[Math.floor(R() * Ms.length)], uu = hand(ref); uu.splice(j, 2, uu[j].concat(uu[j + 1])); T.merge++; if(wmCompare(uu, ref).ok) T.mergeOk++; } }   // две соседние черты одним движением
+        { const uu = hand(ref), x = 80 + R() * 860, y = 80 + R() * 860; uu.splice(Math.floor(R() * (uu.length + 1)), 0, [[x, y], [x + 4 + R() * 8, y + 3 + R() * 6]]); T.tap++; if(wmCompare(uu, ref).ok) T.tapOk++; }   // случайное касание
         const longs = ref.map((s, i) => wmLen(s) >= 260 ? i : -1).filter(i => i >= 0); if(longs.length){ const j = longs[Math.floor(R() * longs.length)], u5 = hand(ref); u5[j] = u5[j].slice().reverse(); const r5 = wmCompare(u5, ref); T.rev++; if(r5.ok && r5.dir.some(q => q.j === j)) T.revOk++; }
       } });
     // «не тот знак»: 400 случайных пар не должны проходить
@@ -35,6 +39,10 @@ const SHOT = process.env.SHOTDIR || '.';
   if(pc(A.missOk, A.miss) < .95) bad('пропуск черты найден точно в ' + (100 * pc(A.missOk, A.miss)).toFixed(1) + '% (нужно ≥ 95%)');
   if(pc(A.swapOk, A.swap) < .95) bad('перестановка черт замечена в ' + (100 * pc(A.swapOk, A.swap)).toFixed(1) + '% (нужно ≥ 95%)');
   if(pc(A.revOk, A.rev) < .95) bad('обратное направление замечено в ' + (100 * pc(A.revOk, A.rev)).toFixed(1) + '% (нужно ≥ 95%)');
+  if(pc(A.splitOk, A.split) < .85) bad('черта в два касания принята в ' + (100 * pc(A.splitOk, A.split)).toFixed(1) + '% (нужно ≥ 85%)');
+  if(pc(A.mergeOk, A.merge) < .90) bad('две черты слитно приняты в ' + (100 * pc(A.mergeOk, A.merge)).toFixed(1) + '% (нужно ≥ 90%)');
+  if(pc(A.tapOk, A.tap) < .98) bad('случайное касание мешает в ' + (100 * (1 - pc(A.tapOk, A.tap))).toFixed(1) + '% случаев (нужно ≤ 2%)');
+  if(A.hints / A.n > .01) bad('ложные подсказки о порядке/направлении при верном почерке: ' + A.hints + ' из ' + A.n + ' (нужно ≤ 1%)');
   if(A.wrongAcc > 0) bad('чужой знак принят ' + A.wrongAcc + ' раз из ' + A.wrongN);
 
   /* ---------- 3. сквозной сценарий в интерфейсе ---------- */
@@ -91,7 +99,7 @@ const SHOT = process.env.SHOTDIR || '.';
   // знак 4: направление и порядок
   const n4 = await p.evaluate(() => wlRef(cById[WL.run.ids[WL.run.i]]).length);
   const long4 = await p.evaluate(() => { const r = wlRef(cById[WL.run.ids[WL.run.i]]); return r.map((s, i) => wmLen(s) >= 260 ? i : -1).filter(i => i >= 0)[0]; });
-  if(long4 >= 0){ await draw({ reverse: [long4] }); await p.click('#wlchk'); await p.waitForTimeout(200); const i4 = await info(); if(i4.ring < 1) bad('развёрнутая черта не замечена: ' + JSON.stringify(i4)); if(i4.arrows < 1) bad('у развёрнутой черты нет стрелки направления'); await p.screenshot({ path: path.join(SHOT, 'wl_dir.png') }); }
+  if(long4 >= 0){ await draw({ reverse: [long4] }); await p.click('#wlchk'); await p.waitForTimeout(200); const i4 = await info(); if(!/Верно/.test(i4.banner || '') || /замечан/.test(i4.banner || '')) bad('подсказка о направлении не должна портить баннер: ' + i4.banner); if(i4.ring < 1) bad('развёрнутая черта не замечена: ' + JSON.stringify(i4)); if(i4.arrows < 1) bad('у развёрнутой черты нет стрелки направления'); await p.screenshot({ path: path.join(SHOT, 'wl_dir.png') }); }
   else { await p.click('#wlskip'); await p.waitForTimeout(100); }
   await p.click('#wlnext'); await p.waitForTimeout(150);
   // знак 5: лишняя черта

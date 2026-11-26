@@ -863,7 +863,7 @@ header .top select#rateSel{max-width:132px;padding:0 30px 0 12px;background-posi
 .pad.wlpad{width:min(100%,380px)}
 .wlsvg{display:block;touch-action:none;user-select:none;-webkit-user-select:none;cursor:crosshair}
 .wlu{fill:none;stroke:var(--ink);stroke-width:30;stroke-linecap:round;stroke-linejoin:round}
-.wlu.ok{stroke:var(--good)}.wlu.nt{stroke:var(--wlb)}.wlu.ex{stroke:var(--warn);stroke-dasharray:44 38}
+.wlu.ok{stroke:var(--good)}.wlu.nt{stroke:var(--wlb)}.wlu.ex{stroke:var(--warn);stroke-dasharray:44 38}.wlu.ig{stroke:var(--mut);opacity:.4}
 .wlg{fill:color-mix(in srgb,var(--mut) 38%,transparent)}.wlg.miss{fill:var(--bad);opacity:.92}
 .wlm{fill:var(--bad)}.wlr{fill:var(--wlb)}
 .wlt{fill:var(--on-acc);font:700 44px system-ui,sans-serif;text-anchor:middle;dominant-baseline:central}
@@ -1767,9 +1767,9 @@ function wmAssign(U, R){
   } }
   for(let i = 0; i < n; i++){ A.push([]); for(let j = 0; j < n; j++) A[i].push(i < nu && j < nr ? Math.min(C[i][j].c, 2 * P) : i < nu ? P : j < nr ? P : 0); }
   const as = n ? wmHung(A) : [], pairs = [], mu = Array(nu).fill(-1), mr = Array(nr).fill(-1); let score = 0;
-  for(let i = 0; i < nu; i++){ const j = as[i]; if(j < nr && C[i][j].c < WMK.TH){ pairs.push({ i, j, c: C[i][j].c, rev: C[i][j].r < C[i][j].f }); mu[i] = j; mr[j] = i; score += C[i][j].c; } else score += P; }
+  for(let i = 0; i < nu; i++){ const j = as[i]; if(j < nr && C[i][j].c < WMK.TH){ pairs.push({ i, j, c: C[i][j].c, f: C[i][j].f, r: C[i][j].r, rev: C[i][j].r < C[i][j].f }); mu[i] = j; mr[j] = i; score += C[i][j].c; } else score += P; }
   for(let j = 0; j < nr; j++) if(mr[j] < 0) score += P;
-  return { pairs, mu, mr, score, Us, Rs };
+  return { pairs, mu, mr, score, Us, Rs, C };
 }
 // подгонка размера и положения по каждой оси: r ≈ (q − mq)·k + mr (метод наименьших квадратов по совпавшим парам).
 // q = (p − ux)·sx + rx — точка ученика в текущих координатах T, значит p ↦ (p − ux)·sx·k + (rx − mq)·k + mr.
@@ -1811,14 +1811,39 @@ function wmCompare(user, ref){
     mu = mu.map(v => v / WMK.N); me = me.map(v => v / WMK.N);
     let sf = 0, sr = 0; for(let k = 0; k < WMK.N; k++){ const a = u[k], b = u[WMK.N - 1 - k], c = e[k]; sf += wmDist([a[0] - mu[0], a[1] - mu[1]], [c[0] - me[0], c[1] - me[1]]); sr += wmDist([b[0] - mu[0], b[1] - mu[1]], [c[0] - me[0], c[1] - me[1]]); }
     const pos = Math.min(f, r) / WMK.N, shape = Math.min(sf, sr) / WMK.N;
-    if(pos < WMK.TH * WMK.LP && shape < WMK.TH * WMK.LS) cand.push({ i, j, c: pos, shape, rev: sr < sf });
+    if(pos < WMK.TH * WMK.LP && shape < WMK.TH * WMK.LS) cand.push({ i, j, c: pos, shape, rev: sr < sf, f: f / WMK.N, r: r / WMK.N });
   }));
   cand.sort((a, b) => a.shape - b.shape);
-  cand.forEach(c => { if(extra.includes(c.i) && missing.includes(c.j)){ extra.splice(extra.indexOf(c.i), 1); missing.splice(missing.indexOf(c.j), 1); pairs.push({ i: c.i, j: c.j, c: c.c, rev: c.rev, loose: true }); loose.push(c.j); } });
-  pairs.forEach(pr => { if(pr.rev && wmLen(ref[pr.j]) >= 200) dir.push(pr); });   // у коротких черт (точка) направление не проверяем
-  const seq = pairs.slice().sort((a, b) => a.i - b.i).map(p => p.j);
+  cand.forEach(c => { if(extra.includes(c.i) && missing.includes(c.j)){ extra.splice(extra.indexOf(c.i), 1); missing.splice(missing.indexOf(c.j), 1); pairs.push({ i: c.i, j: c.j, c: c.c, f: c.f, r: c.r, rev: c.rev, loose: true }); loose.push(c.j); } });
+  // Терпимость к манере письма (как в живом почерке): 1) черта в два касания; 2) две соседние черты одним движением; 3) случайное касание.
+  const pc = (a, b) => { const x = wmResample(a, WMK.N), y = wmResample(b, WMK.N); let f = 0, r = 0; for(let k = 0; k < WMK.N; k++){ f += wmDist(x[k], y[k]); r += wmDist(x[WMK.N - 1 - k], y[k]); } return Math.min(f, r) / WMK.N; };
+  const split = [], merged = [], ignored = [], parts = [], lim = WMK.TH * .9, opts = [];
+  extra.forEach((a, x) => extra.forEach((b2, y) => { if(x < y) missing.forEach(j => { const c = pc(U[a].concat(U[b2]), ref[j]); if(c < lim) opts.push({ t: 's', c, a, b: b2, j }); }); }));
+  extra.forEach(i => missing.forEach(j => missing.forEach(k => { if(j < k){ const c = pc(U[i], ref[j].concat(ref[k])); if(c < lim) opts.push({ t: 'm', c, i, j, k }); } })));
+  // «прилипание»: одна половина разорванной черты (или слитный росчерк) уже совпала с одной эталонной чертой, вторая часть осталась лишней/пропущенной
+  pairs.forEach(p => {
+    if(p.loose || p.split || p.merged) return;
+    extra.forEach(e => { const c = pc(e > p.i ? U[p.i].concat(U[e]) : U[e].concat(U[p.i]), ref[p.j]); if(c < lim && c < p.c - 5) opts.push({ t: 'p', c, p, e }); });
+    missing.forEach(k => { const c = pc(U[p.i], p.j < k ? ref[p.j].concat(ref[k]) : ref[k].concat(ref[p.j])); if(c < lim && c < p.c - 5) opts.push({ t: 'q', c, p, k }); });
+  });
+  opts.sort((p, q) => p.c - q.c).forEach(o => {
+    if(o.t === 'p' && extra.includes(o.e) && !o.p.split){ extra.splice(extra.indexOf(o.e), 1); parts.push(o.e); o.p.split = true; o.p.c = o.c; split.push(o.p.j); return; }
+    if(o.t === 'q' && missing.includes(o.k) && !o.p.merged){ missing.splice(missing.indexOf(o.k), 1); o.p.merged = true; merged.push([Math.min(o.p.j, o.k), Math.max(o.p.j, o.k)]); pairs.push({ i: o.p.i, j: o.k, c: o.c, f: o.c, r: o.c, rev: false, merged: true }); o.p.c = o.c; return; }
+    if(o.t === 's' && extra.includes(o.a) && extra.includes(o.b) && missing.includes(o.j)){
+      extra.splice(extra.indexOf(o.a), 1); extra.splice(extra.indexOf(o.b), 1); missing.splice(missing.indexOf(o.j), 1); split.push(o.j); parts.push(o.b);
+      pairs.push({ i: o.a, j: o.j, c: o.c, f: o.c, r: o.c, rev: false, split: true });
+    } else if(o.t === 'm' && extra.includes(o.i) && missing.includes(o.j) && missing.includes(o.k)){
+      extra.splice(extra.indexOf(o.i), 1); missing.splice(missing.indexOf(o.j), 1); missing.splice(missing.indexOf(o.k), 1); merged.push([o.j, o.k]);
+      pairs.push({ i: o.i, j: o.j, c: o.c, f: o.c, r: o.c, rev: false, merged: true }, { i: o.i, j: o.k, c: o.c, f: o.c, r: o.c, rev: false, merged: true });
+    }
+  });
+  for(let k = extra.length - 1; k >= 0; k--) if(wmLen(U[extra[k]]) < 40){ ignored.push(extra[k]); extra.splice(k, 1); }   // случайное касание не считаем лишней чертой
+  // подсказки о порядке и направлении — только по «уверенным» парам: у черты ученика нет почти такого же по промаху соседа в эталоне
+  const sure = pr => !pr.loose && !pr.split && !pr.merged && A.C[pr.i].every((o, j) => j === pr.j || o.c - pr.c >= 30);
+  pairs.forEach(pr => { if(sure(pr) && pr.r < pr.f * .7 && pr.f - pr.r > 30 && wmLen(ref[pr.j]) >= 200) dir.push(pr); });
+  const seq = pairs.filter(sure).sort((a, b) => a.i - b.i).map(p => p.j);
   const seqOk = seq.every((v, k) => k === 0 || v > seq[k - 1]);
-  return { ok: !missing.length && !extra.length, pairs, missing, extra, dir, loose, seq, seqOk, T, strokes: U, score: A.score };
+  return { ok: !missing.length && !extra.length, pairs, missing, extra, dir, loose, split, merged, ignored, parts, seq, seqOk, T, strokes: U, score: A.score };
 }
 /*WM-CORE-END*/
 /*WL-UI-START*/
@@ -1961,7 +1986,7 @@ function wlCmpSVG(c, res, skipped, thumb){
   const d = HWDATA[c.hz], ref = wlRef(c), byU = {}; res.pairs.forEach(p => { byU[p.i] = p; });
   const miss = skipped ? [] : res.missing, show = skipped ? ref.map((_, j) => j) : res.missing;
   const gl = d.strokes.map((s, j) => '<path class="wlg' + (miss.includes(j) ? ' miss' : '') + '" d="' + s + '"/>').join('');
-  const us = res.strokes.map((p, i) => { const pr = byU[i], cls = !pr ? 'ex' : (pr.loose || res.dir.some(x => x.i === i)) ? 'nt' : 'ok'; return '<path class="wlu ' + cls + '" d="' + wlD(p) + '"/>'; }).join('');
+  const us = res.strokes.map((p, i) => { const pr = byU[i], cls = (res.ignored || []).includes(i) ? 'ig' : (res.parts || []).includes(i) ? 'ok' : !pr ? 'ex' : (pr.loose || res.dir.some(x => x.i === i)) ? 'nt' : 'ok'; return '<path class="wlu ' + cls + '" d="' + wlD(p) + '"/>'; }).join('');
   if(thumb) return '<g transform="translate(0 900) scale(1 -1)">' + gl + '</g>' + us;
   const mk = (j, cls) => { const p = ref[j][0]; return '<g><circle class="' + cls + '" cx="' + p[0].toFixed(0) + '" cy="' + p[1].toFixed(0) + '" r="36"/><text class="wlt" x="' + p[0].toFixed(0) + '" y="' + (p[1] + 2).toFixed(0) + '">' + (j + 1) + '</text></g>'; };
   const arrows = show.concat(res.dir.map(p => p.j)).map(j => wlArrow(ref[j])).join('');
@@ -1972,7 +1997,7 @@ function wlCmpSVG(c, res, skipped, thumb){
 function wlResult(c, res){
   const R = WL.run, id = c.id, d = HWDATA[c.hz], n = d.strokes.length, ref = wlRef(c), skipped = !res;
   if(skipped) res = { ok: false, pairs: [], missing: ref.map((_, j) => j), extra: [], dir: [], loose: [], seq: [], seqOk: true, strokes: [] };
-  const clean = res.ok && res.seqOk && !res.dir.length && !res.loose.length;
+  const clean = res.ok && res.seqOk && !res.dir.length && !res.loose.length && !(res.split || []).length && !(res.merged || []).length;
   if(!R.retry && !R.first[id]){ R.first[id] = { ok: res.ok, clean, skipped, order: res.ok && !res.seqOk }; wlMark(id, res.ok); }
   const good = res.pairs.filter(p => !p.loose).length, num = j => '№ ' + (j + 1);
   const msgs = [];
@@ -1981,14 +2006,18 @@ function wlResult(c, res){
   if(res.extra.length) msgs.push(['warn', 'Лишних черт: ' + res.extra.length + ' (оранжевый пунктир). В этом знаке такой черты нет.']);
   if(res.loose.length) msgs.push(['blue', 'На месте, но криво или сдвинуто: ' + res.loose.map(num).join(', ') + '. Засчитано, но к чётким чертам стоит присмотреться.']);
   if(res.dir.length) msgs.push(['blue', 'Черта идёт не в ту сторону: ' + res.dir.map(p => num(p.j)).join(', ') + '. Синий кружок — откуда её начинают, тёмная стрелка — куда вести.']);
+  if((res.split || []).length) msgs.push(['blue', 'Черта ' + res.split.map(num).join(', ') + ' написана в два касания — засчитано. Лучше вести её одним движением.']);
+  if((res.merged || []).length) msgs.push(['blue', 'Черты ' + res.merged.map(m => '№ ' + (m[0] + 1) + ' и № ' + (m[1] + 1)).join('; ') + ' написаны одним движением — засчитано. По правилам их пишут раздельно.']);
+  if((res.ignored || []).length) msgs.push(['blue', 'Случайное касание экрана (' + res.ignored.length + ') проигнорировано.']);
   if(!res.seqOk){ const s = res.seq.map(j => j + 1), r = s.slice().sort((a, b) => a - b); msgs.push(['warn', 'Порядок черт нарушен: у тебя ' + s.join(' → ') + ', нужно ' + r.join(' → ') + '. На зачёт знака не влияет, но порядок помогает писать быстро и ровно.']); }
   const inner = wlCmpSVG(c, res, skipped);
-  const head = skipped ? 'Не помню — вот как пишется' : res.ok ? (clean ? '🎉 Верно: все ' + n + ' черт на месте' : '✓ Знак записан верно, но есть замечания') : '✗ Не совпало: верных черт ' + good + ' из ' + n;
+  const head = skipped ? 'Не помню — вот как пишется' : res.ok ? (clean ? '🎉 Верно: все ' + n + ' черт на месте' : '✓ Верно: все ' + n + ' черт на месте') : '✗ Не совпало: верных черт ' + good + ' из ' + n;
   view.onclick = null;
   view.innerHTML = wlHead(R) + wlPromptHTML(c, true) +
     '<div class="banner ' + (res.ok ? 'good' : 'bad') + '">' + head + '</div>' +
     '<div class="pad wlpad ' + (res.ok ? 'good' : 'bad') + '" id="wlpad"><svg class="wlsvg" id="wlsvg" viewBox="0 0 1024 1024" aria-label="Сравнение с эталоном">' + inner + '</svg><div id="wlhw" style="position:absolute;inset:0;display:none"></div></div>' +
     (skipped ? '' : '<div class="wlkey"><span><i class="wkk ok"></i>верно</span><span><i class="wkk nt"></i>неточно</span><span><i class="wkk ex"></i>лишнее</span><span><i class="wkk ms"></i>пропущено</span></div>') +
+    (res.ok && msgs.length ? '<div class="small" style="margin:10px 4px 0">Подсказки (на зачёт знака не влияют):</div>' : '') +
     msgs.map(([k, t]) => '<div class="wlmsg ' + k + '">' + esc(t) + '</div>').join('') +
     '<div class="row"><button class="b" id="wlhow" style="flex:1">▶ Как правильно</button><button class="b" id="wlagain" style="flex:1">↻ Ещё раз</button></div>' +
     (!res.ok && !skipped && !(R.first[id] || {}).ov && !R.retry ? '<div class="row"><button class="b" id="wlown" style="flex:1">Это верно — засчитать</button></div><p class="small" style="text-align:center;margin:4px 0 0">Если сайт ошибся (например, знак другого начертания) — засчитай сам.</p>' : '') +
