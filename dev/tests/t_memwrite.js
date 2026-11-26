@@ -66,7 +66,7 @@ const SHOT = process.env.SHOTDIR || '.';
     if(o.extra){ await p.mouse.move(g.x + 100 * k, g.y + 900 * k); await p.mouse.down(); await p.mouse.move(g.x + 400 * k, g.y + 960 * k); await p.mouse.move(g.x + 800 * k, g.y + 940 * k); await p.mouse.up(); }
   };
   const wmPts = s => { const out2 = []; for(let t = 0; t <= 14; t++){ const f = t / 14 * (s.length - 1), a = Math.floor(f), b2 = Math.min(a + 1, s.length - 1), u = f - a; out2.push([s[a][0] + (s[b2][0] - s[a][0]) * u, s[a][1] + (s[b2][1] - s[a][1]) * u]); } return out2; };
-  const info = () => p.evaluate(() => ({ banner: (document.querySelector('.banner') || {}).innerText, msgs: [...document.querySelectorAll('.wlmsg')].map(e => e.innerText), miss: document.querySelectorAll('circle.wlm').length, ring: document.querySelectorAll('circle.wlr').length, arrows: document.querySelectorAll('polygon.wlah').length, ok: document.querySelectorAll('.wlu.ok').length, nt: document.querySelectorAll('.wlu.nt').length, ex: document.querySelectorAll('.wlu.ex').length, head: (document.querySelector('.lbl') || {}).innerText }));
+  const info = () => p.evaluate(() => ({ banner: (document.querySelector('.banner') || {}).innerText, msgs: [...document.querySelectorAll('.wlmsg')].map(e => e.innerText), miss: document.querySelectorAll((document.querySelector('svg[data-v="cmp"]') ? 'svg[data-v="cmp"]' : 'svg[data-v="ref"]') + ' circle.wlm').length, ring: document.querySelectorAll('svg[data-v="cmp"] circle.wlr').length, arrows: document.querySelectorAll('svg[data-v="cmp"] polygon.wlah').length, ok: document.querySelectorAll('svg[data-v="cmp"] .wlu.ok').length, nt: document.querySelectorAll('svg[data-v="cmp"] .wlu.nt').length, ex: document.querySelectorAll('svg[data-v="cmp"] .wlu.ex').length, head: (document.querySelector('.lbl') || {}).innerText }));
 
   await p.click('button[data-list="0"]'); await p.waitForTimeout(200);
   let first = await p.evaluate(() => cById[WL.run.ids[0]].hz); if(first !== '你') bad('первый знак списка 1 должен быть 你, а не ' + first);
@@ -91,7 +91,7 @@ const SHOT = process.env.SHOTDIR || '.';
   await p.click('#wlskip'); await p.waitForTimeout(200); let i3 = await info(); const n3 = await p.evaluate(() => wlRef(cById[WL.run.ids[WL.run.i]]).length);
   if(i3.miss !== n3) bad('«Не помню»: меток начала черт ' + i3.miss + ', нужно ' + n3); if(i3.msgs.length) bad('«Не помню»: лишние сообщения ' + JSON.stringify(i3.msgs));
   await p.screenshot({ path: path.join(SHOT, 'wl_skip.png') });
-  await p.click('#wlhow'); await p.waitForTimeout(500); const hwOn = await p.evaluate(() => !!document.querySelector('#wlhw svg') && document.querySelector('#wlsvg').style.display === 'none'); if(!hwOn) bad('«Как правильно»: анимация не открылась');
+  await p.click('#wlhow'); await p.waitForTimeout(500); const hwOn = await p.evaluate(() => !!document.querySelector('#wlhw svg') && [...document.querySelectorAll('#wlpad svg[data-v]')].every(e => e.style.display === 'none')); if(!hwOn) bad('«Как правильно»: анимация не открылась');
   await p.click('#wlagain'); await p.waitForTimeout(200); let hd = (await info()).head; if(!/повтор/.test(hd || '')) bad('повтор не помечен: ' + hd);
   await draw(); await p.click('#wlchk'); await p.waitForTimeout(200); let i3b = await info(); if(!/Верно/.test(i3b.banner || '')) bad('повтор 老 нарисован верно: ' + i3b.banner);
   let s3 = await p.evaluate(() => st.wl.c003); if(!s3 || s3.n !== 1 || !((s3.f || 0) > (s3.l || 0))) bad('повтор не должен менять результат первой попытки: ' + JSON.stringify(s3));
@@ -156,6 +156,33 @@ const SHOT = process.env.SHOTDIR || '.';
   await p.screenshot({ path: path.join(SHOT, 'wl_hard_result.png'), fullPage: true });
   await p.click('#wlfix'); await p.waitForTimeout(150); const fx = await p.evaluate(() => ({ n: WL.run && WL.run.ids.length, hard: !!WL.hard })); if(fx.n !== 30 || fx.hard) bad('«Учить невспомненные»: ' + JSON.stringify(fx));
   await p.click('#wlx'); await p.waitForTimeout(100);
+
+
+  /* ---------- 5в. три вида разбора и лист бумаги ---------- */
+  await p.evaluate(() => { WL.run = null; WL.hard = null; st.wlg = 'mi'; st.wlt = 'auto'; st.tab = 'study'; st.ls = 'wlist'; route(); wlStart('Виды', [cById.c001], { keep: true }); });
+  await draw(); await p.click('#wlpg'); await p.click('#wlpt');   // сетка 米→田, лист → светлый, рисунок не пропал
+  const pad1 = await p.evaluate(() => ({ cls: document.querySelector('#wlpad').className, strokes: document.querySelectorAll('#wlg path').length, bg: getComputedStyle(document.querySelector('#wlpad')).backgroundColor, ink: getComputedStyle(document.querySelector('#wlpad')).getPropertyValue('--ink').trim(), st: [st.wlg, st.wlt] }));
+  if(!/g-tian/.test(pad1.cls) || !/paperl/.test(pad1.cls) || pad1.strokes < 2 || pad1.st.join() !== 'tian,paper') bad('переключение листа: ' + JSON.stringify(pad1)); out.paper = pad1;
+  await p.click('#wlchk'); await p.waitForTimeout(250);
+  const v1 = await p.evaluate(() => ({ cls: document.querySelector('#wlpad').className, mine: document.querySelectorAll('svg[data-v="mine"] .wlu').length, cmpUser: document.querySelectorAll('svg[data-v="cmp"] .wlu').length, halo: document.querySelectorAll('svg[data-v="cmp"] .wlh').length, sw: getComputedStyle(document.querySelector('svg[data-v="cmp"] .wlu')).strokeWidth, swMine: getComputedStyle(document.querySelector('svg[data-v="mine"] .wlu')).strokeWidth, ghost: getComputedStyle(document.querySelector('svg[data-v="cmp"] .wlg')).fill, show: [...document.querySelectorAll('#wlpad svg[data-v]')].map(e => e.dataset.v + ':' + (e.style.display === 'none' ? 0 : 1)).join(' ') }));
+  if(!/paperl/.test(v1.cls)) bad('лист бумаги не сохранился в разборе: ' + v1.cls); if(v1.mine !== v1.cmpUser || v1.halo !== v1.cmpUser) bad('в «Моё» и «Сравнение» разное число черт: ' + JSON.stringify(v1));
+  if(!(parseFloat(v1.sw) < parseFloat(v1.swMine))) bad('в сравнении линия ученика должна быть тоньше, чем в «Моё»: ' + v1.sw + ' vs ' + v1.swMine); if(v1.show !== 'cmp:1 mine:0 ref:0') bad('по умолчанию видно не только «Сравнение»: ' + v1.show);
+  await p.screenshot({ path: path.join(SHOT, 'wl_view_cmp.png') });
+  await p.click('.wlview button[data-v="mine"]'); let sh = await p.evaluate(() => [...document.querySelectorAll('#wlpad svg[data-v]')].map(e => e.dataset.v + ':' + (e.style.display === 'none' ? 0 : 1)).join(' ')); if(sh !== 'cmp:0 mine:1 ref:0') bad('вид «Моё»: ' + sh);
+  await p.screenshot({ path: path.join(SHOT, 'wl_view_mine.png') });
+  await p.click('.wlview button[data-v="ref"]'); sh = await p.evaluate(() => [...document.querySelectorAll('#wlpad svg[data-v]')].map(e => e.dataset.v + ':' + (e.style.display === 'none' ? 0 : 1)).join(' ')); if(sh !== 'cmp:0 mine:0 ref:1') bad('вид «Эталон»: ' + sh);
+  const refN = await p.evaluate(() => ({ circles: document.querySelectorAll('svg[data-v="ref"] circle.wlm').length, strokes: HWDATA['你'].strokes.length })); if(refN.circles !== refN.strokes) bad('«Эталон»: номеров ' + refN.circles + ', черт ' + refN.strokes);
+  await p.screenshot({ path: path.join(SHOT, 'wl_view_ref.png') });
+  await p.click('#wlhow'); await p.waitForTimeout(400); const anim = await p.evaluate(() => ({ hw: !!document.querySelector('#wlhw svg'), stroke: (() => { const e = document.querySelector('#wlhw svg path[stroke]'); return e ? e.getAttribute('stroke') : ''; })() }));
+  if(!anim.hw) bad('анимация не открылась на светлом листе'); if(/f1ece2/i.test(anim.stroke || '')) bad('на светлом листе анимация нарисована светлым цветом: ' + anim.stroke);
+  await p.click('.wlview button[data-v="cmp"]'); sh = await p.evaluate(() => [...document.querySelectorAll('#wlpad svg[data-v]')].map(e => e.dataset.v + ':' + (e.style.display === 'none' ? 0 : 1)).join(' ') + ' hw:' + document.querySelector('#wlhw').style.display); if(!/cmp:1 mine:0 ref:0/.test(sh) || !/hw:none/.test(sh)) bad('возврат из анимации к сравнению: ' + sh);
+  // неверный знак на светлом листе в тёмной теме: пропущенное — пустой контур, а не заливка
+  await p.click('#wlagain'); await p.waitForTimeout(150); const nn = await p.evaluate(() => wlRef(cById.c001).length); await draw({ skip: [nn - 1] }); await p.click('#wlchk'); await p.waitForTimeout(250);
+  const miss1 = await p.evaluate(() => { const e = document.querySelector('svg[data-v="cmp"] .wlg.miss'); const c = getComputedStyle(e); return e ? { stroke: c.stroke, dash: c.strokeDasharray, fill: c.fill } : null; }); if(!miss1 || !/dash|\d/.test(miss1.dash) || miss1.dash === 'none') bad('пропущенная черта должна быть пунктирным контуром: ' + JSON.stringify(miss1));
+  await p.screenshot({ path: path.join(SHOT, 'wl_view_miss.png') });
+  // настройки в меню
+  await p.click('#wlx'); await p.waitForTimeout(150); await p.click('button[data-grid="cell"]'); await p.waitForTimeout(100); await p.click('button[data-tone="auto"]'); const ms = await p.evaluate(() => [st.wlg, st.wlt]); if(ms.join() !== 'cell,auto') bad('настройки листа в меню: ' + ms);
+  await p.evaluate(() => { st.wlg = 'mi'; st.wlt = 'auto'; save(); WL.run = null; });
 
   /* ---------- 6. «Статистика», тёмная тема, узкий экран ---------- */
   await p.evaluate(() => { WL.run = null; st.tab = 'stats'; route(); }); await p.waitForTimeout(300);
