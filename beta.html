@@ -1878,6 +1878,9 @@ const wlRef = c => HWDATA[c.hz].medians.map(m => m.map(([x, y]) => [x, 900 - y])
 function wlPoolK(){ const nn = typeof nextNode === 'function' ? nextNode() : null; return Math.max(1, Math.min(NL, st.wlk || (nn ? nn.L : NL))); }
 const wlPool = K => wlAll().filter(c => c.L <= K);
 function wlMilestones(){ const t = wlAll().length, m = []; for(let v = WLN; v <= t; v += WLN) m.push(v); if(m[m.length - 1] !== t) m.push(t); return m; }
+// Анимация «как писать» (HanziWriter) идёт циклом. Раньше цикл не останавливался при переходе к следующему знаку или экрану:
+// каждый показ оставлял «зомби»-цикл, который до бесконечности рисовал знак в уже удалённой разметке и грузил телефон.
+function wlKill(){ const f = WL.stopAnim; WL.stopAnim = null; if(f) f(); }
 function wlStart(name, chars, o){
   o = o || {}; const list = o.keep ? chars : (st.wlr === false ? chars : wlShuffle(chars));
   WL.run = { name, ids: list.map(c => c.id), i: 0, first: {}, retry: false, before: wlCount(wlAll().map(c => c.id)) };
@@ -1886,6 +1889,7 @@ function wlStart(name, chars, o){
 
 /* ---------- меню ---------- */
 function viewWList(){
+  wlKill();
   if(WL.run) return wlShow();
   if(WL.hard) return wlHardShow();
   const all = wlAll(), ids = all.map(c => c.id), cnt = wlCount(ids), ms = wlMilestones();
@@ -1988,6 +1992,7 @@ function wlHead(R){
     '<div class="bar" style="margin-top:4px"><i style="width:' + Math.round(R.i / n * 100) + '%;background:var(--acc)"></i></div></div></div>';
 }
 function wlShow(){
+  wlKill();
   const R = WL.run, c = R && cById[R.ids[R.i]]; if(!c){ WL.run = null; return viewWList(); }
   const strokes = [];
   view.onclick = null;
@@ -2028,6 +2033,7 @@ const wlMineSVG = raw => raw.map(p => '<path class="wlu" d="' + wlD(p) + '"/>').
 
 /* ---------- разбор результата ---------- */
 function wlResult(c, res, raw){
+  wlKill();
   const R = WL.run, id = c.id, d = HWDATA[c.hz], n = d.strokes.length, ref = wlRef(c), skipped = !res;
   if(skipped) res = { ok: false, pairs: [], missing: ref.map((_, j) => j), extra: [], dir: [], loose: [], seq: [], seqOk: true, strokes: [] };
   const clean = res.ok && res.seqOk && !res.dir.length && !res.loose.length && !(res.split || []).length && !(res.merged || []).length;
@@ -2060,8 +2066,9 @@ function wlResult(c, res, raw){
   bindPlay(c); $('#wlx').onclick = () => { WL.run = null; toast('Результаты сохранены'); viewWList(); };
   wlPaperBind();
   const hw = $('#wlhw'), padEl = $('#wlpad'); let hwOn = false, hwW = null, view0 = skipped ? 'ref' : 'cmp';
+  const stopAnim = () => { hwOn = false; const w = hwW; hwW = null; if(w){ try{ w.hideCharacter({ duration: 0 }); }catch(e){} } };   // обрывает текущий показ и цикл
   const setView = v => {                           // три вида: сравнение / как нарисовано / эталон (чистый знак)
-    hwOn = false; view0 = v; hw.style.display = 'none'; padEl.style.cursor = v === 'ref' ? 'pointer' : '';
+    stopAnim(); view0 = v; hw.style.display = 'none'; padEl.style.cursor = v === 'ref' ? 'pointer' : '';
     document.querySelectorAll('#wlpad svg[data-v]').forEach(e => { e.style.display = e.dataset.v === v ? '' : 'none'; });
     document.querySelectorAll('.wlview button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); const k = $('#wlkey'); if(k) k.style.display = v === 'cmp' ? '' : 'none'; $('#wlhint').style.display = v === 'ref' ? 'block' : 'none'; $('#wlhint').textContent = 'Нажми на знак — покажу, как его писать';
   };
@@ -2070,10 +2077,10 @@ function wlResult(c, res, raw){
   padEl.onclick = () => {                          // нажатие на эталон — анимация «как писать»; ещё раз — обратно к чистому знаку
     if(hwOn) return setView('ref');
     if(view0 !== 'ref' || !window.HanziWriter) return;
-    hwOn = true; document.querySelectorAll('#wlpad svg[data-v]').forEach(e => { e.style.display = 'none'; }); hw.style.display = ''; hw.innerHTML = ''; $('#wlhint').textContent = 'Нажми ещё раз — вернуться к знаку';
+    hwOn = true; WL.stopAnim = stopAnim; document.querySelectorAll('#wlpad svg[data-v]').forEach(e => { e.style.display = 'none'; }); hw.style.display = ''; hw.innerHTML = ''; $('#wlhint').textContent = 'Нажми ещё раз — вернуться к знаку';
     const W = padEl.clientWidth || 300, ink = getComputedStyle(padEl).getPropertyValue('--ink').trim() || '#000';
     hwW = HanziWriter.create(hw, c.hz, { width: W, height: W, padding: Math.round(W * .07), showOutline: true, showCharacter: false, strokeColor: ink, outlineColor: '#b8ab92', highlightColor: '#c23a2e', strokeAnimationSpeed: 1.1, delayBetweenStrokes: 250, charDataLoader: (ch, ok) => ok(HWDATA[ch]) });
-    const loop = () => { if(!hwOn || !hwW) return; hwW.animateCharacter({ onComplete: () => setTimeout(() => { if(hwOn){ hwW.hideCharacter({ duration: 0 }); loop(); } }, 1200) }); };
+    const loop = () => { if(!hwOn || !hwW) return; if(!hw.isConnected) return stopAnim(); hwW.animateCharacter({ onComplete: () => setTimeout(() => { if(hwOn && hwW && hw.isConnected){ hwW.hideCharacter({ duration: 0 }); loop(); } else stopAnim(); }, 1200) }); };
     hwW.hideCharacter({ duration: 0 }); loop();
   };
   $('#wlagain').onclick = () => { R.retry = true; wlShow(); };
@@ -2085,6 +2092,7 @@ function wlResult(c, res, raw){
 
 /* ---------- итог занятия ---------- */
 function wlSummary(){
+  wlKill();
   const R = WL.run, n = R.ids.length, f = R.ids.map(id => R.first[id] || { ok: false }), okN = f.filter(x => x.ok).length, pct = Math.round(okN / n * 100);
   const wrong = R.ids.filter((id, i) => !f[i].ok), ordN = f.filter(x => x.order).length, ms = wlMilestones(), now = wlCount(wlAll().map(c => c.id));
   const crossed = ms.filter(v => R.before < v && now >= v).pop();
@@ -2105,6 +2113,7 @@ function wlSummary(){
 /* ---------- хард: N попыток, никаких подсказок; знаки узнаём по рисунку ---------- */
 function wlHardStart(n, K){ WL.run = null; WL.hard = { n, K, i: 0, att: [], before: wlCount(wlAll().map(c => c.id)) }; wlHardShow(); }
 function wlHardShow(){
+  wlKill();
   const H = WL.hard, strokes = [], used = H.att.length;
   view.onclick = null;
   view.innerHTML = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px"><button class="b" id="wlx" aria-label="Выйти" style="padding:6px 12px">✕</button><div style="flex:1;min-width:0"><div class="lbl" style="margin:0">Хард · попытка ' + (used + 1) + ' из ' + H.n + ' · осталось ' + (H.n - used) + '</div><div class="bar" style="margin-top:4px"><i style="width:' + Math.round(used / H.n * 100) + '%;background:var(--acc)"></i></div></div></div>' +
@@ -5372,7 +5381,7 @@ function route25(){
    Номер меняем вручную при каждой новой версии (константа VERSION25 ниже; тест t_v25.js сверяет её с именем файла в HANDOFF).
    ===================================================================== */
 const VERSION25 = 'Beta';      // имя версии на экране «Статистика»; файл страницы beta.html, воркер sw-beta.js (откат: site70.html)
-const BUILD25 = '26.11.2026 · сборка 7';
+const BUILD25 = '26.11.2026 · сборка 8';
 function route29(){
   const r = route25.apply(this, arguments);
   try{
