@@ -864,7 +864,7 @@ header .top select#rateSel{max-width:132px;padding:0 30px 0 12px;background-posi
 .wlsvg{display:block;touch-action:none;user-select:none;-webkit-user-select:none;cursor:crosshair}
 .wlu{fill:none;stroke:var(--ink);stroke-width:30;stroke-linecap:round;stroke-linejoin:round}
 .wlu.ok{stroke:var(--good)}.wlu.nt{stroke:var(--wlb)}.wlu.ex{stroke:var(--warn);stroke-dasharray:44 38}.wlu.ig{stroke:var(--mut);opacity:.4}
-.wlg{fill:var(--ghost)}.wlg.miss{fill:color-mix(in srgb,var(--bad) 16%,transparent);stroke:var(--bad);stroke-width:8;stroke-dasharray:26 16;stroke-linejoin:round}.wlg.solid{fill:var(--ink);opacity:.82}
+.wlg{fill:var(--ghost)}.wlg.miss{fill:color-mix(in srgb,var(--bad) 16%,transparent);stroke:var(--bad);stroke-width:8;stroke-dasharray:26 16;stroke-linejoin:round}.wlg.solid{fill:var(--ink);opacity:.92}
 .wlh{fill:none;stroke:var(--card);stroke-width:30;stroke-linecap:round;stroke-linejoin:round;opacity:.92}
 .cmp .wlu{stroke-width:14}.cmp .wlh{stroke-width:30}.wlthumb .wlu{stroke-width:24}.wlthumb .wlh{stroke-width:42}
 .wla.inv{stroke:var(--card)}.wlah.inv{fill:var(--card)}
@@ -873,6 +873,7 @@ header .top select#rateSel{max-width:132px;padding:0 30px 0 12px;background-posi
 .pad.g-tian{background-image:linear-gradient(to bottom,transparent calc(50% - .75px),var(--gridc) calc(50% - .75px),var(--gridc) calc(50% + .75px),transparent calc(50% + .75px)),linear-gradient(to right,transparent calc(50% - .75px),var(--gridc) calc(50% - .75px),var(--gridc) calc(50% + .75px),transparent calc(50% + .75px));background-size:100% 100%,100% 100%;background-position:0 0,0 0}
 .pad.g-cell{background-image:linear-gradient(var(--gridc) 1px,transparent 1px),linear-gradient(90deg,var(--gridc) 1px,transparent 1px);background-size:12.5% 12.5%,12.5% 12.5%;background-position:0 0,0 0;background-repeat:repeat}
 .pad.g-none{background-image:none}
+.wlact{position:sticky;bottom:calc(80px + env(safe-area-inset-bottom));z-index:5;margin-top:16px;padding:16px 0 8px;background:linear-gradient(to bottom,transparent,var(--bg) 28%)}.wlact>.b{flex:1}
 .wlpp{display:flex;gap:8px;margin-top:8px}.wlpp button{flex:1;padding:7px 8px;font-size:13px}
 .wlview{display:flex;margin-top:10px}.wlview button{flex:1}.wlgr,.wlto{display:flex;flex-wrap:wrap}.wlgr button,.wlto button{flex:1 0 auto}
 .wlm{fill:var(--bad)}.wlr{fill:var(--wlb)}
@@ -1992,7 +1993,7 @@ function wlShow(){
   view.innerHTML = wlHead(R) + wlPromptHTML(c) +
     '<div class="pad write wlpad' + wlPaperCls() + '" id="wlpad"><svg class="wlsvg" id="wlsvg" viewBox="0 0 1024 1024" aria-label="Поле для письма"><g id="wlg"></g></svg></div>' + wlPaperRow() +
     '<div class="row"><button class="b" id="wlundo">↶ Черта</button><button class="b" id="wlclr">Стереть</button><button class="b" id="wlskip">Не помню</button></div>' +
-    '<div class="row"><button class="b pri" id="wlchk" style="flex:1">Проверить ✓</button></div>' +
+    '<div class="row wlact"><button class="b pri" id="wlchk">Проверить ✓</button></div>' +
     '<p class="small" style="text-align:center">Пиши пальцем в клетке. Каждое касание — одна черта. Случайная черта — «↶ Черта».</p>';
   bindPlay(c); $('#wlx').onclick = () => { WL.run = null; toast('Результаты сохранены'); viewWList(); };
   if(!R.retry && (st.wlm || 'py') === 'snd') playItem(c);
@@ -2019,8 +2020,8 @@ function wlCmpSVG(c, res, skipped, thumb){
   const arrows = res.missing.concat(res.dir.map(p => p.j)).map(j => wlArrow(ref[j], '')).join('');
   return gl + us + arrows + res.missing.map(j => wlMk(ref, j, 'wlm')).join('') + res.dir.map(p => wlMk(ref, p.j, 'wlr')).join('');
 }
-// «Эталон»: тёмный силуэт, у каждой черты номер начала и стрелка
-const wlRefSVG = c => { const ref = wlRef(c), all = ref.map((_, j) => j); return wlGlyph(c, 'solid') + all.map(j => wlArrow(ref[j], ' inv')).join('') + all.map(j => wlMk(ref, j, 'wlm')).join(''); };
+// «Эталон»: просто чистый знак; по нажатию на поле — анимация, как его писать
+const wlRefSVG = c => wlGlyph(c, 'solid');
 // «Моё»: ровно то, что нарисовано (без подгонки), пером той же толщины
 const wlMineSVG = raw => raw.map(p => '<path class="wlu" d="' + wlD(p) + '"/>').join('');
 
@@ -2048,27 +2049,28 @@ function wlResult(c, res, raw){
     '<div class="pad wlpad ' + (res.ok ? 'good' : 'bad') + wlPaperCls() + '" id="wlpad">' +
       (skipped ? '' : '<svg class="wlsvg cmp" data-v="cmp" viewBox="0 0 1024 1024" aria-label="Сравнение с эталоном">' + wlCmpSVG(c, res, false) + '</svg><svg class="wlsvg" data-v="mine" viewBox="0 0 1024 1024" style="display:none" aria-label="Как написано тобой">' + wlMineSVG(raw) + '</svg>') +
       '<svg class="wlsvg" data-v="ref" viewBox="0 0 1024 1024"' + (skipped ? '' : ' style="display:none"') + ' aria-label="Эталон">' + wlRefSVG(c) + '</svg><div id="wlhw" style="position:absolute;inset:0;display:none"></div></div>' +
+    '<div class="small" id="wlhint" style="text-align:center;margin-top:8px;display:' + (skipped ? 'block' : 'none') + '">Нажми на знак — покажу, как его писать</div>' +
     (skipped ? '' : '<div class="seg wlview" role="group" aria-label="Что показать"><button data-v="cmp" class="on">Сравнение</button><button data-v="mine">Моё</button><button data-v="ref">Эталон</button></div>') + wlPaperRow() +
     (skipped ? '' : '<div class="wlkey" id="wlkey"><span><i class="wkk ok"></i>твоя черта верна</span><span><i class="wkk nt"></i>неточно</span><span><i class="wkk ex"></i>лишняя</span><span><i class="wkk ms"></i>пропущена (контур)</span></div>') +
     (res.ok && msgs.length ? '<div class="small" style="margin:10px 4px 0">Подсказки (на зачёт знака не влияют):</div>' : '') +
     msgs.map(([k, t]) => '<div class="wlmsg ' + k + '">' + esc(t) + '</div>').join('') +
-    '<div class="row"><button class="b" id="wlhow" style="flex:1">▶ Как правильно</button><button class="b" id="wlagain" style="flex:1">↻ Ещё раз</button></div>' +
     (!res.ok && !skipped && !(R.first[id] || {}).ov && !R.retry ? '<div class="row"><button class="b" id="wlown" style="flex:1">Это верно — засчитать</button></div><p class="small" style="text-align:center;margin:4px 0 0">Если сайт ошибся (например, знак другого начертания) — засчитай сам.</p>' : '') +
-    '<div class="row"><button class="b pri" id="wlnext" style="flex:1">' + (R.i + 1 >= R.ids.length ? 'Итог ▶' : 'Дальше ▶') + '</button></div>';
+    '<div class="row wlact"><button class="b" id="wlagain">↻ Ещё раз</button><button class="b pri" id="wlnext">' + (R.i + 1 >= R.ids.length ? 'Итог ▶' : 'Дальше ▶') + '</button></div>';
   bindPlay(c); $('#wlx').onclick = () => { WL.run = null; toast('Результаты сохранены'); viewWList(); };
   wlPaperBind();
-  const hw = $('#wlhw'); let hwOn = false, hwW = null, view0 = skipped ? 'ref' : 'cmp';
-  const setView = v => {                           // три вида: сравнение / как нарисовано / эталон
-    hwOn = false; view0 = v; hw.style.display = 'none'; $('#wlhow').textContent = '▶ Как правильно';
+  const hw = $('#wlhw'), padEl = $('#wlpad'); let hwOn = false, hwW = null, view0 = skipped ? 'ref' : 'cmp';
+  const setView = v => {                           // три вида: сравнение / как нарисовано / эталон (чистый знак)
+    hwOn = false; view0 = v; hw.style.display = 'none'; padEl.style.cursor = v === 'ref' ? 'pointer' : '';
     document.querySelectorAll('#wlpad svg[data-v]').forEach(e => { e.style.display = e.dataset.v === v ? '' : 'none'; });
-    document.querySelectorAll('.wlview button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); const k = $('#wlkey'); if(k) k.style.display = v === 'cmp' ? '' : 'none';
+    document.querySelectorAll('.wlview button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); const k = $('#wlkey'); if(k) k.style.display = v === 'cmp' ? '' : 'none'; $('#wlhint').style.display = v === 'ref' ? 'block' : 'none'; $('#wlhint').textContent = 'Нажми на знак — покажу, как его писать';
   };
   document.querySelectorAll('.wlview button').forEach(b => { b.onclick = () => setView(b.dataset.v); });
-  $('#wlhow').onclick = () => {
-    if(hwOn) return setView(view0);
-    hwOn = true; document.querySelectorAll('#wlpad svg[data-v]').forEach(e => { e.style.display = 'none'; }); hw.style.display = ''; $('#wlhow').textContent = '◀ Назад';
-    if(!window.HanziWriter) return; hw.innerHTML = '';
-    const pad = $('#wlpad'), W = pad.clientWidth || 300, ink = getComputedStyle(pad).getPropertyValue('--ink').trim() || '#000';
+  padEl.style.cursor = skipped ? 'pointer' : '';
+  padEl.onclick = () => {                          // нажатие на эталон — анимация «как писать»; ещё раз — обратно к чистому знаку
+    if(hwOn) return setView('ref');
+    if(view0 !== 'ref' || !window.HanziWriter) return;
+    hwOn = true; document.querySelectorAll('#wlpad svg[data-v]').forEach(e => { e.style.display = 'none'; }); hw.style.display = ''; hw.innerHTML = ''; $('#wlhint').textContent = 'Нажми ещё раз — вернуться к знаку';
+    const W = padEl.clientWidth || 300, ink = getComputedStyle(padEl).getPropertyValue('--ink').trim() || '#000';
     hwW = HanziWriter.create(hw, c.hz, { width: W, height: W, padding: Math.round(W * .07), showOutline: true, showCharacter: false, strokeColor: ink, outlineColor: '#b8ab92', highlightColor: '#c23a2e', strokeAnimationSpeed: 1.1, delayBetweenStrokes: 250, charDataLoader: (ch, ok) => ok(HWDATA[ch]) });
     const loop = () => { if(!hwOn || !hwW) return; hwW.animateCharacter({ onComplete: () => setTimeout(() => { if(hwOn){ hwW.hideCharacter({ duration: 0 }); loop(); } }, 1200) }); };
     hwW.hideCharacter({ duration: 0 }); loop();
@@ -2108,8 +2110,7 @@ function wlHardShow(){
     '<div class="card" style="padding:10px 14px"><div class="ru" style="margin:0;font-size:16px;text-align:center">Пиши любой знак, который помнишь. Подсказок нет.</div></div>' +
     '<div class="pad write wlpad' + wlPaperCls() + '" id="wlpad"><svg class="wlsvg" id="wlsvg" viewBox="0 0 1024 1024" aria-label="Поле для письма"><g id="wlg"></g></svg></div>' + wlPaperRow() +
     '<div class="row"><button class="b" id="wlundo">↶ Черта</button><button class="b" id="wlclr">Стереть</button></div>' +
-    '<div class="row"><button class="b pri" id="wlnxh" style="flex:1">Следующий знак ▶</button></div>' +
-    '<div class="row"><button class="b" id="wlend" style="flex:1">Больше не знаю — закончить</button></div>';
+    '<div class="row wlact"><button class="b" id="wlend">Больше не знаю — закончить</button><button class="b pri" id="wlnxh">Следующий знак ▶</button></div>';
   wlBindPad(strokes); wlPaperBind();
   $('#wlx').onclick = () => { WL.hard = null; viewWList(); };
   const push = () => { if(strokes.length) H.att.push(strokes.map(s => s.map(q => [Math.round(q[0]), Math.round(q[1])]))); };

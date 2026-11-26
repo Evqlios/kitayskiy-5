@@ -72,9 +72,12 @@ const SHOT = process.env.SHOTDIR || '.';
   let first = await p.evaluate(() => cById[WL.run.ids[0]].hz); if(first !== '你') bad('первый знак списка 1 должен быть 你, а не ' + first);
   await p.screenshot({ path: path.join(SHOT, 'wl_blank.png') });
   // знак 1 (你): верно
+  { const c1 = await p.evaluate(() => { const b = document.querySelector('#wlchk'); return getComputedStyle(b.parentElement).position; }); if(c1 !== 'sticky') bad('кнопка «Проверить» не закреплена: ' + c1); }
   await draw(); await p.screenshot({ path: path.join(SHOT, 'wl_drawn.png') }); await p.click('#wlchk'); await p.waitForTimeout(200);
   let i1 = await info(); if(!/Верно/.test(i1.banner || '')) bad('你 нарисован верно, а разбор: ' + JSON.stringify(i1)); if(i1.miss) bad('у верного знака есть красные метки');
   await p.screenshot({ path: path.join(SHOT, 'wl_ok.png') });
+  const stick = await p.evaluate(() => { const b = document.querySelector('#wlnext'), r = b.getBoundingClientRect(); return { pos: getComputedStyle(b.parentElement).position, top: r.top, bottom: r.bottom, h: innerHeight, scrollable: document.documentElement.scrollHeight > innerHeight }; });
+  if(stick.pos !== 'sticky') bad('кнопка «Дальше» не закреплена: ' + JSON.stringify(stick)); out.sticky = stick;
   let s1 = await p.evaluate(() => st.wl.c001); if(!s1 || !(s1.l > (s1.f || 0)) || s1.n !== 1) bad('результат 你 не записан: ' + JSON.stringify(s1));
   await p.click('#wlnext'); await p.waitForTimeout(150);
   // знак 2 (好): пропущена последняя черта
@@ -89,9 +92,9 @@ const SHOT = process.env.SHOTDIR || '.';
   await p.click('#wlnext'); await p.waitForTimeout(150);
   // знак 3 (老): «Не помню» → нумерация всех черт, потом повтор (в счёт не идёт)
   await p.click('#wlskip'); await p.waitForTimeout(200); let i3 = await info(); const n3 = await p.evaluate(() => wlRef(cById[WL.run.ids[WL.run.i]]).length);
-  if(i3.miss !== n3) bad('«Не помню»: меток начала черт ' + i3.miss + ', нужно ' + n3); if(i3.msgs.length) bad('«Не помню»: лишние сообщения ' + JSON.stringify(i3.msgs));
+  if(i3.miss !== 0) bad('«Не помню»: эталон должен быть чистым знаком, а меток ' + i3.miss); { const g3 = await p.evaluate(() => document.querySelectorAll('svg[data-v="ref"] path.wlg').length); if(g3 !== n3) bad('«Не помню»: черт эталона ' + g3 + ', нужно ' + n3); } if(i3.msgs.length) bad('«Не помню»: лишние сообщения ' + JSON.stringify(i3.msgs));
   await p.screenshot({ path: path.join(SHOT, 'wl_skip.png') });
-  await p.click('#wlhow'); await p.waitForTimeout(500); const hwOn = await p.evaluate(() => !!document.querySelector('#wlhw svg') && [...document.querySelectorAll('#wlpad svg[data-v]')].every(e => e.style.display === 'none')); if(!hwOn) bad('«Как правильно»: анимация не открылась');
+  await p.click('#wlpad'); await p.waitForTimeout(500); const hwOn = await p.evaluate(() => !!document.querySelector('#wlhw svg') && [...document.querySelectorAll('#wlpad svg[data-v]')].every(e => e.style.display === 'none')); if(!hwOn) bad('«Как правильно»: анимация не открылась');
   await p.click('#wlagain'); await p.waitForTimeout(200); let hd = (await info()).head; if(!/повтор/.test(hd || '')) bad('повтор не помечен: ' + hd);
   await draw(); await p.click('#wlchk'); await p.waitForTimeout(200); let i3b = await info(); if(!/Верно/.test(i3b.banner || '')) bad('повтор 老 нарисован верно: ' + i3b.banner);
   let s3 = await p.evaluate(() => st.wl.c003); if(!s3 || s3.n !== 1 || !((s3.f || 0) > (s3.l || 0))) bad('повтор не должен менять результат первой попытки: ' + JSON.stringify(s3));
@@ -171,9 +174,9 @@ const SHOT = process.env.SHOTDIR || '.';
   await p.click('.wlview button[data-v="mine"]'); let sh = await p.evaluate(() => [...document.querySelectorAll('#wlpad svg[data-v]')].map(e => e.dataset.v + ':' + (e.style.display === 'none' ? 0 : 1)).join(' ')); if(sh !== 'cmp:0 mine:1 ref:0') bad('вид «Моё»: ' + sh);
   await p.screenshot({ path: path.join(SHOT, 'wl_view_mine.png') });
   await p.click('.wlview button[data-v="ref"]'); sh = await p.evaluate(() => [...document.querySelectorAll('#wlpad svg[data-v]')].map(e => e.dataset.v + ':' + (e.style.display === 'none' ? 0 : 1)).join(' ')); if(sh !== 'cmp:0 mine:0 ref:1') bad('вид «Эталон»: ' + sh);
-  const refN = await p.evaluate(() => ({ circles: document.querySelectorAll('svg[data-v="ref"] circle.wlm').length, strokes: HWDATA['你'].strokes.length })); if(refN.circles !== refN.strokes) bad('«Эталон»: номеров ' + refN.circles + ', черт ' + refN.strokes);
+  const refN = await p.evaluate(() => ({ circles: document.querySelectorAll('svg[data-v="ref"] circle, svg[data-v="ref"] polygon').length, glyph: document.querySelectorAll('svg[data-v="ref"] path.wlg').length, strokes: HWDATA['你'].strokes.length, hint: getComputedStyle(document.querySelector('#wlhint')).display })); if(refN.circles) bad('«Эталон» должен быть чистым знаком, без номеров и стрелок: ' + refN.circles); if(refN.glyph !== refN.strokes) bad('«Эталон»: черт на картинке ' + refN.glyph + ', нужно ' + refN.strokes); if(refN.hint === 'none') bad('в «Эталоне» нет подсказки про нажатие');
   await p.screenshot({ path: path.join(SHOT, 'wl_view_ref.png') });
-  await p.click('#wlhow'); await p.waitForTimeout(400); const anim = await p.evaluate(() => ({ hw: !!document.querySelector('#wlhw svg'), stroke: (() => { const e = document.querySelector('#wlhw svg path[stroke]'); return e ? e.getAttribute('stroke') : ''; })() }));
+  await p.click('#wlpad'); await p.waitForTimeout(400); const anim = await p.evaluate(() => ({ hw: !!document.querySelector('#wlhw svg'), stroke: (() => { const e = document.querySelector('#wlhw svg path[stroke]'); return e ? e.getAttribute('stroke') : ''; })() }));
   if(!anim.hw) bad('анимация не открылась на светлом листе'); if(/f1ece2/i.test(anim.stroke || '')) bad('на светлом листе анимация нарисована светлым цветом: ' + anim.stroke);
   await p.click('.wlview button[data-v="cmp"]'); sh = await p.evaluate(() => [...document.querySelectorAll('#wlpad svg[data-v]')].map(e => e.dataset.v + ':' + (e.style.display === 'none' ? 0 : 1)).join(' ') + ' hw:' + document.querySelector('#wlhw').style.display); if(!/cmp:1 mine:0 ref:0/.test(sh) || !/hw:none/.test(sh)) bad('возврат из анимации к сравнению: ' + sh);
   // неверный знак на светлом листе в тёмной теме: пропущенное — пустой контур, а не заливка
