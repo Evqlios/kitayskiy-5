@@ -1006,6 +1006,7 @@ function cleanState(o){
   ['err', 'errx'].forEach(k => { if(o[k]){ const e = cleanErr(o[k]); if(Object.keys(e).length) s[k] = e; } });   // site56
   // «Списки» (письмо по памяти): wl = { id знака: { l — время последней верной попытки, f — неверной (мс), n — попыток, k — верных } }; wlm/wlk/wls/wlr — настройки экрана
   if(o.wl) s.wl = cleanMap(o.wl, /^c\d{3}$/, v => v && typeof v === 'object' && (v.l > 0 || v.f > 0) ? { l: clampN(v.l, 4e12), f: clampN(v.f, 4e12), n: clampN(v.n, 9999), k: clampN(v.k, 9999) } : null);
+  if(Number.isFinite(o.nt)) s.nt = Math.max(0, Math.min(2, Math.floor(o.nt)));   // «Тоны в заданиях» (0–2)
   put('wlm', pickIn(o.wlm, ['py', 'ru', 'snd'])); put('wlg', pickIn(o.wlg, ['mi', 'tian', 'cell', 'none'])); put('wlt', pickIn(o.wlt, ['auto', 'paper'])); put('wlr', bool(o.wlr)); if(Number.isFinite(o.wlk)) s.wlk = Math.max(1, Math.min(NL, Math.floor(o.wlk))); if(Number.isFinite(o.wls)) s.wls = clampN(o.wls, 999); if(Number.isFinite(o.wlh)) s.wlh = clampN(o.wlh, 999);
   if(o.wr) s.wr = cleanMap(o.wr, /^[cw]\d{3}$/, v => Number.isFinite(v) ? clampN(v, 9999) : null);
   if(o.pt) s.pt = cleanMap(o.pt, /^\d{1,2}:(intro|intro2|listen|sign|tone|gram|phon|sent|sgu|test)$/, v => v && typeof v === 'object' ? { s: clampN(v.s, 3), n: clampN(v.n, 9999) } : null);
@@ -3190,7 +3191,7 @@ function viewPath23(){
       esc(LTITLE[L] || wl.slice(0, 5).map(w => w.hz).join(' ') + (topicOf(L) ? ' ·' + topicOf(L) : '')) + '</span></span><span class="lst">' + fmt17(dn) + ' из ' + sg.length + icon('chevron-right') + '</span></button>' +
       '<div class="lpr"><i style="width:' + Math.round(100 * dn / Math.max(1, sg.length)) + '%"></i></div>';
     if(open){
-      h += '<div class="nodes">' + NODES.filter(x => x[0] !== 'intro2' || L === 6).map(([n, ic, nm, ds]) => {
+      h += '<div class="nodes">' + NODES.filter(x => (x[0] !== 'intro2' || L === 6) && !nodeHid(x[0])).map(([n, ic, nm, ds]) => {
         const s = nodeStars(L, n), av = nodeAv7(L, n);
         return '<button class="node' + (s ? ' done' : '') + (av ? '' : ' off') + '" data-go="' + L + ':' + n + '"><span class="ni2">' + ic + '</span><b>' + nm + '</b><small>' + (av ? ds : 'упражнения этого урока ещё не добавлены') + '</small>' + partBadge17(L, n, s) + '<span class="stars" aria-label="Результат: ' + s + ' из 3">' + [1, 2, 3].map(i => icon(i <= s ? 'dot' : 'ring')).join('') + '</span></button>';
       }).join('') + '</div>';
@@ -3939,7 +3940,7 @@ function checkPy(it, input){
   const v = String(input == null ? '' : input).trim(); if(!v) return 'bad';
   if(HZ11.test(v)) return onlyHz11(v) === expectedHz11(it) ? 'ok' : 'bad';   // написал знаками — это тоже правильный ответ
   const r = alignSyl11(sylListOf(it), v);
-  return r.good ? 'ok' : (r.lettersOk ? 'tone' : 'bad');
+  return r.good ? 'ok' : (r.lettersOk ? ((st.nt || 0) >= 1 ? 'ok' : 'tone') : 'bad');   // st.nt ≥ 1: буквы верны, тон не проверяем
 }
 
 // «Диктовка»: слоги — по эталону, а не по пробелам, поэтому «ni3hao3» и «nǐhǎo» тоже читаются.
@@ -4308,6 +4309,7 @@ function viewStats(){
       '<div class="lg11"><i class="k"></i>помню <i class="l"></i>учу <i class="n"></i>новые</div></div>' +
     '<div class="card c11"><b class="h11">Настройки</b>' +
       '<div class="sl11"><div class="slt11"><span>Голос диктора</span></div>' + voiceListHTML66('voiceSeg') + '<div class="slh11"><span>У реплик мужчин и женщин в ролях свой голос: берётся ваш выбранный из мужских или женских</span></div></div>' +
+      '<div class="sl11"><div class="slt11"><span>Тоны в заданиях</span></div><div class="seg" id="ntSeg" role="group" aria-label="Тоны в заданиях" style="display:flex;flex-wrap:wrap">' + [[0, 'Как есть'], [1, 'Без раздела «Пиньинь и тоны»'], [2, 'Без тонов и фонетики']].map(([k, n]) => '<button data-nt="' + k + '" class="' + ((st.nt || 0) === k ? 'on' : '') + '" style="flex:1 0 auto">' + n + '</button>').join('') + '</div><div class="slh11"><span>Скрывает разделы с тонами: «Продолжить» и зачёт урока их не ждут. Ответы пиньинем принимаются без тона, в итоговом тесте нет вопросов про тон. Уже набранные звёзды остаются.</span></div></div>' +
       '<label class="tg11"><input type="checkbox" id="setAuto" ' + (st.auto !== false ? 'checked' : '') + '><span>Звук сам, когда появляются иероглифы</span></label>' +
       '<label class="tg11"><input type="checkbox" id="setRuby" ' + (st.ruby !== false ? 'checked' : '') + '><span>Пиньинь над иероглифами</span></label>' +
       '<div class="sl11"><div class="slt11"><span>Подсветка при озвучке</span><b id="hloV"></b></div><input type="range" id="setHlo" min="-300" max="300" step="25" aria-label="Сдвиг подсветки"><div class="slh11"><span>раньше</span><span>позже</span></div></div></div>' +
@@ -4315,6 +4317,7 @@ function viewStats(){
     '<details class="dt11" id="d11b"><summary>Перенос и сброс данных</summary></details>';
   const host = $('#d11b'); if(dlc) host.appendChild(dlc); if(bak) host.appendChild(bak);   // «Проверку звука» из статистики убрали: пользователю она ничего не говорит
   wireVoice65($('#voiceSeg'));
+  document.querySelectorAll('#ntSeg button').forEach(b => { b.onclick = () => { st.nt = +b.dataset.nt; save(); viewStats(); }; });
   $('#setAuto').onchange = e => { st.auto = e.target.checked; save(); };
   $('#setRuby').onchange = e => { st.ruby = e.target.checked; save(); };
   const hl = $('#setHlo'), hv = $('#hloV'), hshow = v => { hv.textContent = (+v > 0 ? '+' : '') + v + ' мс'; };
@@ -4742,7 +4745,7 @@ function charTask15(c, pool, mode){
     opts: os.map(o => ({ h: '<span class="h" style="font-size:30px">' + esc(o.hz) + '</span>', p: o.py, ok: o.id === c.id, hz: true })), fb };
 }
 function testSession15(L){
-  const pool = poolUpTo(L), out = [], modes = ['ru', 'hz', 'listen', 'tone'];
+  const pool = poolUpTo(L), out = [], modes = (st.nt || 0) >= 1 ? ['ru', 'hz', 'listen', 'lru'] : ['ru', 'hz', 'listen', 'tone'];
   const lw = shuffle(lessonWords(L)).slice(0, 10);
   lw.forEach((w, i) => { const t = mcWord(L, w, modes[i % 4], pool) || mcWord(L, w, 'ru', pool); if(t) out.push(t); });
   const have = new Set(lw.map(w => w.hz));
@@ -5366,7 +5369,7 @@ function route25(){
    Номер меняем вручную при каждой новой версии (константа VERSION25 ниже; тест t_v25.js сверяет её с именем файла в HANDOFF).
    ===================================================================== */
 const VERSION25 = 'Beta';      // имя версии на экране «Статистика»; файл страницы beta.html, воркер sw-beta.js (откат: site70.html)
-const BUILD25 = '26.11.2026 · сборка 5';
+const BUILD25 = '26.11.2026 · сборка 6';
 function route29(){
   const r = route25.apply(this, arguments);
   try{
@@ -5463,7 +5466,7 @@ function renderBuild(t, box){
   const check = () => {
     if(done) return; const v = inp.value.trim(); if(!v){ inp.focus(); return; }
     done = true; inp.disabled = true; box.querySelector('#tyok').disabled = true;
-    const ok = norm27(v) === norm27(t.exp) || (t.alt && norm27(v) === norm27(t.alt));
+    const noTone = x => norm27(x).replace(/[0-5]/g, ''), ok = norm27(v) === norm27(t.exp) || (t.alt && norm27(v) === norm27(t.alt)) || ((st.nt || 0) >= 1 && noTone(v) === noTone(t.exp));   // st.nt ≥ 1: без тона тоже верно
     afterAnswer(t, ok);
     nextBtn(t, '<div class="ans">' + esc(t.exp) + '</div><div class="apy">' + esc(t.shown) + '</div>' + (ok ? '' : '<div class="why26"><div><b>Ты написал:</b> ' + esc(v) + '</div><div><b>Верно:</b> ' + esc(t.exp) + ' (цифра — тон: 1 ровный, 2 восходящий, 3 низкий, 4 нисходящий; лёгкий — без цифры)</div></div>'), ok);
   };
@@ -5528,7 +5531,9 @@ function buildSession28(L, node){
    Откат: убрать вызов patch28.py из build.sh.
    ===================================================================== */
 NODES.splice(1, 0, ['intro2', '🃏', 'Слова, часть 2', 'вторая половина слов урока 6']);
-function nodeAv7(L, n){ return n === 'intro2' ? L === 6 : nodeAv28(L, n); }
+// Настройка «Тоны в заданиях» (st.nt): 1 — не показывать и не требовать раздел «Пиньинь и тоны»; 2 — ещё и «Фонетику». Скрытый раздел не мешает кнопке «Продолжить» и зачёту урока; накопленные звёзды не стираются
+const nodeHid = n => { const t = st.nt || 0; return (t >= 1 && n === 'tone') || (t >= 2 && n === 'phon'); };   // раздел скрыт настройкой
+function nodeAv7(L, n){ if(nodeHid(n)) return false; return n === 'intro2' ? L === 6 : nodeAv28(L, n); }
 function buildSession(L, node){
   if(L === 6 && (node === 'intro' || node === 'intro2') && !RES18){
     const full = buildSession28.call(this, 6, 'intro'), chunks = [], names = [];
