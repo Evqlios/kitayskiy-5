@@ -47,7 +47,7 @@ const SHOT = process.env.SHOTDIR || '.';
 
   // рисуем знак мышью по медианам эталона; skip — какие черты пропустить; extra — добавить лишнюю черту; reverse — какую развернуть
   const draw = async (o) => {
-    o = o || {}; const g = await p.evaluate(() => { const r = document.querySelector('#wlsvg').getBoundingClientRect(); const c = cById[WL.run.ids[WL.run.i]]; return { x: r.left, y: r.top, w: r.width, ref: wlRef(c) }; });
+    o = o || {}; const g = await p.evaluate(id => { const r = document.querySelector('#wlsvg').getBoundingClientRect(); const c = id ? cById[id] : cById[WL.run.ids[WL.run.i]]; return { x: r.left, y: r.top, w: r.width, ref: wlRef(c) }; }, o.id || null);
     const k = g.w / 1024; let list = g.ref.map((s, i) => ({ s, i })).filter(o2 => !(o.skip || []).includes(o2.i));
     for(const { s, i } of list){
       let pts = wmPts(s); if((o.reverse || []).includes(i)) pts = pts.reverse();
@@ -58,7 +58,7 @@ const SHOT = process.env.SHOTDIR || '.';
     if(o.extra){ await p.mouse.move(g.x + 100 * k, g.y + 900 * k); await p.mouse.down(); await p.mouse.move(g.x + 400 * k, g.y + 960 * k); await p.mouse.move(g.x + 800 * k, g.y + 940 * k); await p.mouse.up(); }
   };
   const wmPts = s => { const out2 = []; for(let t = 0; t <= 14; t++){ const f = t / 14 * (s.length - 1), a = Math.floor(f), b2 = Math.min(a + 1, s.length - 1), u = f - a; out2.push([s[a][0] + (s[b2][0] - s[a][0]) * u, s[a][1] + (s[b2][1] - s[a][1]) * u]); } return out2; };
-  const info = () => p.evaluate(() => ({ banner: (document.querySelector('.banner') || {}).innerText, msgs: [...document.querySelectorAll('.wlmsg')].map(e => e.innerText), miss: document.querySelectorAll('circle.wlm').length, ring: document.querySelectorAll('circle.wlr').length, ok: document.querySelectorAll('.wlu.ok').length, nt: document.querySelectorAll('.wlu.nt').length, ex: document.querySelectorAll('.wlu.ex').length, head: (document.querySelector('.lbl') || {}).innerText }));
+  const info = () => p.evaluate(() => ({ banner: (document.querySelector('.banner') || {}).innerText, msgs: [...document.querySelectorAll('.wlmsg')].map(e => e.innerText), miss: document.querySelectorAll('circle.wlm').length, ring: document.querySelectorAll('circle.wlr').length, arrows: document.querySelectorAll('polygon.wlah').length, ok: document.querySelectorAll('.wlu.ok').length, nt: document.querySelectorAll('.wlu.nt').length, ex: document.querySelectorAll('.wlu.ex').length, head: (document.querySelector('.lbl') || {}).innerText }));
 
   await p.click('button[data-list="0"]'); await p.waitForTimeout(200);
   let first = await p.evaluate(() => cById[WL.run.ids[0]].hz); if(first !== '你') bad('первый знак списка 1 должен быть 你, а не ' + first);
@@ -72,8 +72,9 @@ const SHOT = process.env.SHOTDIR || '.';
   // знак 2 (好): пропущена последняя черта
   const n2 = await p.evaluate(() => wlRef(cById[WL.run.ids[WL.run.i]]).length);
   await draw({ skip: [n2 - 1] }); await p.click('#wlchk'); await p.waitForTimeout(200);
-  let i2 = await info(); if(!/Не совпало/.test(i2.banner || '')) bad('пропущена черта, а банер: ' + i2.banner); if(i2.miss !== 1) bad('красных меток должно быть 1, а ' + i2.miss);
+  let i2 = await info(); if(!/Не совпало/.test(i2.banner || '')) bad('пропущена черта, а банер: ' + i2.banner); if(i2.miss !== 1) bad('красных меток должно быть 1, а ' + i2.miss); if(i2.arrows !== 1) bad('у пропущенной черты нужна 1 стрелка направления, а ' + i2.arrows);
   if(!i2.msgs.some(m => m.includes('№ ' + n2))) bad('в разборе нет номера пропущенной черты № ' + n2 + ': ' + JSON.stringify(i2.msgs));
+  const sw = await p.evaluate(() => [...document.querySelectorAll('.wlkey .wkk')].map(e => e.getBoundingClientRect().width)); if(sw.length !== 4 || sw.some(w => w < 10)) bad('метки легенды не видны: ' + sw);
   await p.screenshot({ path: path.join(SHOT, 'wl_missing.png') });
   let s2 = await p.evaluate(() => st.wl.c002); if(!s2 || !((s2.f || 0) > (s2.l || 0))) bad('неверная попытка 好 должна стать «ошибался»: ' + JSON.stringify(s2));
   await p.click('#wlown'); await p.waitForTimeout(100); s2 = await p.evaluate(() => st.wl.c002); if(!(s2.l > s2.f)) bad('«Это верно — засчитать» не сработало: ' + JSON.stringify(s2));
@@ -90,7 +91,7 @@ const SHOT = process.env.SHOTDIR || '.';
   // знак 4: направление и порядок
   const n4 = await p.evaluate(() => wlRef(cById[WL.run.ids[WL.run.i]]).length);
   const long4 = await p.evaluate(() => { const r = wlRef(cById[WL.run.ids[WL.run.i]]); return r.map((s, i) => wmLen(s) >= 260 ? i : -1).filter(i => i >= 0)[0]; });
-  if(long4 >= 0){ await draw({ reverse: [long4] }); await p.click('#wlchk'); await p.waitForTimeout(200); const i4 = await info(); if(i4.ring < 1) bad('развёрнутая черта не замечена: ' + JSON.stringify(i4)); await p.screenshot({ path: path.join(SHOT, 'wl_dir.png') }); }
+  if(long4 >= 0){ await draw({ reverse: [long4] }); await p.click('#wlchk'); await p.waitForTimeout(200); const i4 = await info(); if(i4.ring < 1) bad('развёрнутая черта не замечена: ' + JSON.stringify(i4)); if(i4.arrows < 1) bad('у развёрнутой черты нет стрелки направления'); await p.screenshot({ path: path.join(SHOT, 'wl_dir.png') }); }
   else { await p.click('#wlskip'); await p.waitForTimeout(100); }
   await p.click('#wlnext'); await p.waitForTimeout(150);
   // знак 5: лишняя черта
@@ -124,9 +125,33 @@ const SHOT = process.env.SHOTDIR || '.';
   const rub = await p.evaluate(() => document.querySelector('.res.ok') && document.querySelector('.res.ok').innerText); if(!/Рубеж 30/.test(rub || '')) bad('рубеж 30 не отмечен: ' + rub);
   await p.screenshot({ path: path.join(SHOT, 'wl_milestone.png'), fullPage: true });
 
+
+  /* ---------- 5б. хард: без подсказок, знаки узнаются по рисунку ---------- */
+  await p.evaluate(() => { WL.run = null; st.tab = 'study'; st.ls = 'wlist'; st.wlk = 15; st.wl = {}; st.wlh = 30; route(); });
+  const hsz = await p.evaluate(() => [...document.querySelectorAll('[data-hsize]')].map(b => +b.dataset.hsize)); if(hsz.join() !== '30,60,90,120,150,180,210,240') bad('попытки хард-режима: ' + hsz);
+  await p.click('#wlhard'); await p.waitForTimeout(200);
+  const hardUI = await p.evaluate(() => ({ py: !!document.querySelector('.py'), play: !!document.querySelector('[data-play]'), ru: !!document.querySelector('.ru:not([style*="16px"])'), text: document.querySelector('#view, main').innerText }));
+  if(hardUI.py || hardUI.play) bad('в харде есть подсказки (пиньинь или звук)'); if(!/попытка 1 из 30/.test(hardUI.text)) bad('нет счётчика попыток: ' + hardUI.text.slice(0, 200));
+  await p.click('#wlnxh'); await p.waitForTimeout(100); const empty = await p.evaluate(() => WL.hard.att.length); if(empty !== 0) bad('пустая попытка не должна считаться');
+  for(const step of [{ id: 'c001' }, { id: 'c002' }, { id: 'c001' }, { id: 'c004', skip: [-1] }]){
+    const o = Object.assign({}, step); if(o.skip){ const n = await p.evaluate(() => wlRef(cById.c004).length); o.skip = [n - 1]; }
+    await draw(o); await p.click('#wlnxh'); await p.waitForTimeout(100);
+  }
+  await p.mouse.move(100, 300); const r0 = await p.evaluate(() => { const r = document.querySelector('#wlsvg').getBoundingClientRect(); return [r.left, r.top, r.width]; });
+  await p.mouse.move(r0[0] + r0[2] * .2, r0[1] + r0[2] * .3); await p.mouse.down(); for(let t = 0; t < 12; t++) await p.mouse.move(r0[0] + r0[2] * (.2 + t * .05), r0[1] + r0[2] * (.3 + (t % 2) * .35)); await p.mouse.up();   // каракули
+  await p.click('#wlend'); await p.waitForSelector('text=Хард · итог', { timeout: 20000 }); await p.waitForTimeout(200);
+  const H = await p.evaluate(() => ({ seen: WL.hard.seen, dup: WL.hard.out.filter(o => o.dup).length, unk: WL.hard.out.filter(o => !o.ok).length, n: WL.hard.out.length, near: WL.hard.out.filter(o => o.near).map(o => o.near.c.id), wl: { c001: wlState('c001'), c002: wlState('c002'), c004: wlState('c004') }, text: document.querySelector('#view, main').innerText }));
+  out.hard = { seen: H.seen, dup: H.dup, unk: H.unk, n: H.n, near: H.near };
+  if(H.n !== 5) bad('попыток должно быть 5, а ' + H.n); if(H.seen.slice().sort().join() !== 'c001,c002') bad('узнанные знаки: ' + H.seen); if(H.dup !== 1) bad('повтор 你 не замечен: ' + H.dup);
+  if(H.unk !== 2) bad('не узнанных должно быть 2 (знак без черты и каракули), а ' + H.unk); if(!H.near.includes('c004') || H.near.length !== 1) bad('«похоже на» должно быть только для знака без черты (каракули — без догадки): ' + H.near);
+  if(H.wl.c001 !== 'ok' || H.wl.c002 !== 'ok' || H.wl.c004 !== 'new') bad('отметки после харда: ' + JSON.stringify(H.wl)); if(!/Похоже на/.test(H.text) || !/Не вспомнил из уроков 1–15/.test(H.text)) bad('в итоге нет разбора: ' + H.text.slice(0, 400));
+  await p.screenshot({ path: path.join(SHOT, 'wl_hard_result.png'), fullPage: true });
+  await p.click('#wlfix'); await p.waitForTimeout(150); const fx = await p.evaluate(() => ({ n: WL.run && WL.run.ids.length, hard: !!WL.hard })); if(fx.n !== 30 || fx.hard) bad('«Учить невспомненные»: ' + JSON.stringify(fx));
+  await p.click('#wlx'); await p.waitForTimeout(100);
+
   /* ---------- 6. «Статистика», тёмная тема, узкий экран ---------- */
   await p.evaluate(() => { WL.run = null; st.tab = 'stats'; route(); }); await p.waitForTimeout(300);
-  const stat = await p.evaluate(() => document.body.innerText); if(!/Пишу по памяти\s*30\s*из 237/.test(stat.replace(/\n/g, ' '))) bad('в «Статистике» нет строки «Пишу по памяти 30 из 237»');
+  const stat = await p.evaluate(() => document.body.innerText); const wc = await p.evaluate(() => wlCount(wlAll().map(c => c.id))); if(!new RegExp('Пишу по памяти\\s*' + wc + '\\s*из 237').test(stat.replace(/\n/g, ' '))) bad('в «Статистике» нет строки «Пишу по памяти ' + wc + ' из 237»');
   await p.setViewportSize({ width: 320, height: 640 }); await p.evaluate(() => { document.documentElement.dataset.theme = 'dark'; st.tab = 'study'; st.ls = 'wlist'; route(); }); await p.waitForTimeout(300);
   await p.screenshot({ path: path.join(SHOT, 'wl_dark320.png'), fullPage: true });
   const hscroll = await p.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth); if(hscroll) bad('горизонтальная прокрутка на 320 px');
