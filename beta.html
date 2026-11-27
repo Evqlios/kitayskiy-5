@@ -2439,7 +2439,18 @@ function sentTask(s, pool){
   const alt = new Set(SENTS.filter(x => !x.dup && x.id !== s.id && x.ru === s.ru).reduce((a, x) => a.concat(x.tokens), []));
   const ex = shuffle(pool.filter(w => !have.has(w.hz) && !alt.has(w.hz))).slice(0, 2);
   return { k: 'build', gid: s.id, q: s.ru, audio: s, tiles: shuffle(s.tokens.map(t => ({ t, p: wByHz[t].disp })).concat(ex.map(w => ({ t: w.hz, p: w.disp })))),
-    acc: [s.tokens], hz: s.tokens.join(''), py: s.py, exp: '', src: s.src, sid: s.id };
+    acc: [s.tokens].concat(SENTS.filter(x => !x.dup && x.id !== s.id && x.ru === s.ru).map(x => x.tokens), qVariants(s.tokens, s.ru)), hz: s.tokens.join(''), py: s.py, exp: '', src: s.src, sid: s.id };
+}
+/* beta (сборка 9): вопрос «Он учитель?» допускает 他是不是老师, 他是老师 (с «?») и т.п. — раньше засчитывался только один эталон.
+   qVariants: сокращённые верные формы вопроса «да/нет»: А-не-А → А (是不是→是, 漂亮不漂亮→漂亮), 有没有 → 有. Только если русский вопрос оканчивается на «?». */
+function qVariants(tok, q){
+  const out = [];
+  if(!/\?\s*$/.test(String(q || ''))) return out;
+  for(let i = 0; i < tok.length - 1; i++){
+    if(tok[i + 1] === '不' && tok[i] === tok[i + 2]) out.push(tok.slice(0, i + 1).concat(tok.slice(i + 3)));
+    if(tok[i] === '有' && tok[i + 1] === '没有') out.push(tok.slice(0, i + 1).concat(tok.slice(i + 2)));
+  }
+  return out;
 }
 const pyKey = s => String(s).toLowerCase().replace(/[\s,.!?，。！？'’\-·]/g, '');
 const PYMAP = {};
@@ -2459,7 +2470,7 @@ function sguTask26(e){
       fb: '<div class="ans">' + esc(e.ans[0][0]) + '</div><div class="exp">' + esc(e.exp) + '</div>', src: e.src, audio: pm || (e.pyp ? null : { id: e.id, text: e.ans[0].join('') }) };
   }
   const hzs = e.pyp ? e.ans[0].join(' ') : e.ans[0].join('');
-  return { k: 'build', gid: e.id, q: e.q, tiles: shuffle(all.map(t => ({ t, p: e.pyp ? '' : (TPY[t] || pyTok(t)) }))), acc: e.ans, hz: hzs, pyp: !!e.pyp, py: e.pyp ? '' : e.ans[0].map(t => TPY[t] || pyTok(t)).join(' '), exp: e.exp, src: e.src, audio: e.pyp ? pm : { id: e.id, text: e.ans[0].join('') } };
+  return { k: 'build', gid: e.id, q: e.q, tiles: shuffle(all.map(t => ({ t, p: e.pyp ? '' : (TPY[t] || pyTok(t)) }))), acc: e.pyp ? e.ans : e.ans.concat(qVariants(e.ans[0], e.q)), hz: hzs, pyp: !!e.pyp, py: e.pyp ? '' : e.ans[0].map(t => TPY[t] || pyTok(t)).join(' '), exp: e.exp, src: e.src, audio: e.pyp ? pm : { id: e.id, text: e.ans[0].join('') } };
 }
 function buildSession15(L, node){
   const out = [], pool = poolUpTo(L), lw = lessonWords(L);
@@ -2686,7 +2697,7 @@ function renderBuild27(t, box){
         afterAnswer(t, ok && tries === 0);
         // beta: верный, но не предусмотренный порядок засчитывается ошибкой — даём ученику сообщить свой вариант (уходит автору вместе с ответом)
         const altBtn = ok || !t.gid || !ans.length ? '' : '<div class="rep13 alt13" data-rep13="' + esc(String(t.gid)) + '"><button class="rp13" data-rp="alt" data-ans="' + esc(ans.map(x => x.t).join(' ')) + '">⚑ Мой вариант тоже верен — сообщить</button></div>';
-        nextBtn(t, '<div class="ans">' + esc(t.hz) + '</div>' + (t.py ? '<div class="apy">' + esc(t.py) + '</div>' : '') + '<div class="exp">' + esc(t.exp || '') + '</div>' + (t.audio ? '<button class="b" style="margin-top:8px;padding:8px 14px" data-say="1">🔊 Послушать</button>' : '') + altBtn, ok);
+        nextBtn(t, '<div class="ans">' + esc(t.hz) + '</div>' + (t.py ? '<div class="apy">' + esc(t.py) + '</div>' : '') + (ok && ans.map(x => x.t).join('') !== t.acc[0].join('') ? '<div class="small">Твой вариант тоже верен: ' + esc(ans.map(x => x.t).join('')) + '. В заданиях ждём форму из урока (А-не-А), на экзамене подойдут обе.</div>' : '') + '<div class="exp">' + esc(t.exp || '') + '</div>' + (t.audio ? '<button class="b" style="margin-top:8px;padding:8px 14px" data-say="1">🔊 Послушать</button>' : '') + altBtn, ok);
         const sb = box.querySelector('[data-say]');
         if(sb) sb.onclick = () => t.sid ? playById(t.sid) : playAudio(t.audio.id, t.audio.text);
         if(t.sid) playById(t.sid); else if(t.audio) playAudio(t.audio.id, t.audio.text);
@@ -5381,7 +5392,7 @@ function route25(){
    Номер меняем вручную при каждой новой версии (константа VERSION25 ниже; тест t_v25.js сверяет её с именем файла в HANDOFF).
    ===================================================================== */
 const VERSION25 = 'Beta';      // имя версии на экране «Статистика»; файл страницы beta.html, воркер sw-beta.js (откат: site70.html)
-const BUILD25 = '26.11.2026 · сборка 8';
+const BUILD25 = '27.11.2026 · сборка 9';
 function route29(){
   const r = route25.apply(this, arguments);
   try{
