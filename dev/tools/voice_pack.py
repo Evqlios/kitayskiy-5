@@ -7,11 +7,16 @@
 Индексы вставляются в страницу между метками /*VOICE-AIDX*/ … /*VOICE-AIDX-END*/ и /*VOICE-ATIM*/ … /*VOICE-ATIM-END*/ (метки уже стоят в файле;
 повторный запуск заменяет вставку, дубликатов не будет).
 
-Запуск: python3 voice_pack.py <папка с out> <куда класть pack2_*.mp3> <страница.html>
+Запуск: python3 voice_pack.py <папка с out> <куда класть pack2_*.mp3> <страница.html> [--replace] [--aliases aliases.json]
+  --replace: клипы из папки, которые уже есть в наборе, ЗАМЕНЯЮТСЯ: новая запись дописывается в конец, индекс указывает на неё
+             (старые байты остаются на месте, чтобы не сдвинуть остальные клипы у тех, кто скачал набор).
+  --aliases: {id: id_источника} — клип этого id указывает на ту же запись, что и источник (задания с тем же текстом, что слово).
 """
 import json, os, re, sys
 
 src, dst, page = sys.argv[1:4]
+REPLACE = '--replace' in sys.argv
+ALIASES = json.load(open(sys.argv[sys.argv.index('--aliases') + 1])) if '--aliases' in sys.argv else {}
 aidx, atim, report = {}, {}, {}
 page_s = open(page, encoding='utf-8').read()
 def old_index(mark, var):
@@ -29,17 +34,20 @@ for key in sorted(os.listdir(src)):
         buf = open(path, 'rb').read()
         for i, (off, ln) in a.items():                       # проверка: клип в файле тот же, что в папке (если старого клипа в папке нет — не сверяем:
             f_ = os.path.join(d, i + '.mp3')                 # смещения не меняются, т.к. новые клипы дописываются только в конец набора)
-            if os.path.exists(f_): assert buf[off:off + ln] == open(f_, 'rb').read(), 'клип ' + key + '/' + i + ' изменился'
+            if os.path.exists(f_) and not REPLACE: assert buf[off:off + ln] == open(f_, 'rb').read(), 'клип ' + key + '/' + i + ' изменился'
         mode, off = 'ab', len(buf)
     else:
         a, t, mode, off = {}, {}, 'wb', 0
     with open(path, mode) as out:
         for i in ids:
-            if i in a: continue
+            if i in a and not REPLACE: continue
             b = open(os.path.join(d, i + '.mp3'), 'rb').read()
             out.write(b); a[i] = [off, len(b)]; off += len(b)
             tm = json.load(open(os.path.join(d, i + '.json')))['t']
             if tm: t[i] = tm
+            else: t.pop(i, None)
+    for i, srcid in ALIASES.items():                      # псевдонимы: тот же кусок файла, что у источника
+        if srcid in a and (REPLACE or i not in a): a[i] = a[srcid]; (t.__setitem__(i, t[srcid]) if srcid in t else t.pop(i, None))
     aidx[key], atim[key] = a, t
     report[key] = {'клипов': len(a), 'МБ': round(off / 1048576, 2), 'с таблицей времён': len(t)}
 s = page_s
