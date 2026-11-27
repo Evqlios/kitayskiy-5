@@ -92,15 +92,19 @@ def timings(text, bounds, shift):
 async def make(it, voice, kind, rate, an_tail=None):
     """возвращает (mp3, времена) для одного варианта"""
     text, tail = it['text'], it.get('tail')
-    if kind == 'dup': src = text + '，' + text + '。'
+    kind, _, sh = kind.partition('@'); shift = float(sh) if sh else 0.0     # «dot@0.08»: вырезку слога сдвинуть на 0,08 с позже
+    if kind == 'dup3': src = '，'.join([text] * 3) + '。'
+    elif kind == 'excl': src = text + '！'
+    elif kind == 'dupslow': src = text + '，' + text + '。'
+    elif kind == 'dup': src = text + '，' + text + '。'
     elif kind in ('dot', 'slow'): src = text + '。'
     elif kind in ('comma', 'commaslow'): src = '，'.join(re.findall(HZ, text)) + '。'
     else: src = text
-    rt = '-15%' if (kind in ('slow', 'commaslow') and rate == '+0%') else rate
+    rt = '-15%' if (kind in ('slow', 'commaslow', 'dupslow') and rate == '+0%') else rate
     mp3, bounds = await synth(src, voice, rt)
     # где начинается нужная часть
     start = 0.0; use = bounds
-    if kind == 'dup':
+    if kind in ('dup', 'dupslow', 'dup3'):
         ev = [b for b in bounds if b[0].strip('，。') == text]
         if len(ev) >= 2: start = max(0, ev[-1][1] - 0.03); use = [b for b in bounds if b[1] >= ev[-1][1] - 1e-6]
     if tail:
@@ -109,6 +113,7 @@ async def make(it, voice, kind, rate, an_tail=None):
         else:
             n = len(re.findall(HZ, text)); k = text.index(tail)
             start = max(0, valley_split(mp3, n, k) - 0.03); use = [(tail, start + 0.03, 0.3)]
+    start += shift if tail else 0.0
     out = ff_cut(mp3, start) if start > 0 else mp3
     T = timings(text if not tail else tail, [b for b in use if b[0].strip('，。')], start)
     n_hz = len(HZ.findall(tail or text))
@@ -117,17 +122,21 @@ async def make(it, voice, kind, rate, an_tail=None):
 
 async def main():
     ap = argparse.ArgumentParser(); ap.add_argument('items'); ap.add_argument('out'); ap.add_argument('voice'); ap.add_argument('prefix')
-    ap.add_argument('--asr-model', default='/tmp/asr_model'); ap.add_argument('--jobs', type=int, default=8)
+    ap.add_argument('--asr-model', default='/tmp/asr_model'); ap.add_argument('--jobs', type=int, default=8); ap.add_argument('--retry', action='store_true', help='повторить только записи с оценкой < 3 расширенным набором вариантов')
     a = ap.parse_args()
     items = json.load(open(a.items, encoding='utf-8')); asr = Asr(a.asr_model)
     sem = asyncio.Semaphore(a.jobs); report = {}
     rep_path = os.path.join(a.out, f'report_{a.prefix}.json')
     if os.path.exists(rep_path): report = json.load(open(rep_path))
 
+    EXTRA = ['dup3', 'excl', 'dupslow']; TAILK = ['dot@0.06', 'dot@0.12', 'dot@0.18', 'plain@0.06', 'plain@0.12']
     async def one(it):
-        if it['id'] in report and all(os.path.exists(os.path.join(a.out, a.prefix + sp, it['id'] + '.mp3')) for sp in 'nms'): return
+        if a.retry and (it['id'] not in report or report[it['id']]['оценка'] >= 3): return
+        if not a.retry and it['id'] in report and all(os.path.exists(os.path.join(a.out, a.prefix + sp, it['id'] + '.mp3')) for sp in 'nms'): return
         async with sem:
-            kinds = ['dot', 'plain'] if it.get('tail') else [k for k in PRIO if len(re.findall(HZ, it['text'])) > 1 or not k.startswith('comma')]
+            multi = len(re.findall(HZ, it['text'])) > 1
+            if a.retry: kinds = TAILK if it.get('tail') else EXTRA
+            else: kinds = ['dot', 'plain'] if it.get('tail') else [k for k in PRIO if multi or not k.startswith('comma')]
             res = {}
             for kd in kinds:
                 try:
@@ -137,16 +146,17 @@ async def main():
                 except Exception as e: print('сбой', it['id'], kd, e, file=sys.stderr)
             if not res: print('ПРОВАЛ', it['id'], file=sys.stderr); return
             best = max(res, key=lambda k: (res[k][0], -PRIO.index(k) if k in PRIO else 0))
+            if a.retry and res[best][0] <= report[it['id']]['оценка']: return          # лучше не стало: оставляем прежнее
             for sp in 'nms':
                 if sp == 'n': mp3, T = res[best][1], res[best][2]
                 else:
-                    try: mp3, T = await make(it, a.voice, best if best not in ('slow',) else 'dot', RATE[sp])
+                    try: mp3, T = await make(it, a.voice, best if best != 'slow' else 'dot', RATE[sp])
                     except Exception as e: print('сбой', it['id'], sp, e, file=sys.stderr); continue
                 d = os.path.join(a.out, a.prefix + sp); os.makedirs(d, exist_ok=True)
                 open(os.path.join(d, it['id'] + '.mp3'), 'wb').write(mp3)
                 json.dump({'t': T, 'sec': round(len(mp3) / 6000, 3)}, open(os.path.join(d, it['id'] + '.json'), 'w'))
             report[it['id']] = {'text': it['text'], 'py': it['py'], 'выбран': best, 'оценка': round(res[best][0], 2), 'услышано': res[best][3],
-                                'все': {k: [round(v[0], 2), v[3]] for k, v in res.items()}}
+                                'все': {k: [round(v[0], 2), v[3]] for k, v in res.items()}} if not a.retry else dict(report[it['id']], выбран=best, оценка=round(res[best][0], 2), услышано=res[best][3], повтор=True)
             json.dump(report, open(rep_path, 'w'), ensure_ascii=False)
     await asyncio.gather(*[one(i) for i in items])
     ok = sum(1 for v in report.values() if v['оценка'] >= 3)
