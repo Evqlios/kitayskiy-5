@@ -1,0 +1,49 @@
+# Автотесты сайта: браузерные тесты (Playwright + Chromium) и проверка правил Firestore в эмуляторе.
+# Запускаются при каждом пуше и pull request. Публикацию сайта (GitHub Pages) этот файл не трогает.
+name: tests
+on:
+  push:
+  pull_request:
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Playwright и Chromium (вне репозитория, чтобы не мусорить)
+        run: |
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw"
+          npm init -y >/dev/null && npm i playwright@1.49.1 --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          echo "NODE_PATH=$RUNNER_TEMP/pw/node_modules" >> "$GITHUB_ENV"
+      - name: Тесты dev/tests
+        run: |
+          mkdir -p "$RUNNER_TEMP/shots" && cd "$RUNNER_TEMP/shots"
+          fail=0
+          for t in "$GITHUB_WORKSPACE"/dev/tests/t_*.js; do
+            if timeout 240 node "$t" > out.log 2>&1; then echo "ok   $(basename "$t")"; else echo "FAIL $(basename "$t")"; tail -20 out.log; fail=1; fi
+          done
+          timeout 120 node "$GITHUB_WORKSPACE/dev/tests/smoke.js" "$GITHUB_WORKSPACE/beta.html" || fail=1
+          timeout 120 node "$GITHUB_WORKSPACE/dev/tests/check_d13.js" "$GITHUB_WORKSPACE/beta.html" || fail=1
+          exit $fail
+  rules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - name: Правила Firestore в эмуляторе
+        run: |
+          mkdir -p "$RUNNER_TEMP/rt" && cd "$RUNNER_TEMP/rt"
+          cp "$GITHUB_WORKSPACE/firestore.rules" "$GITHUB_WORKSPACE/dev/tests/rules/rules_test.mjs" .
+          sed -i "s#new URL('../../../firestore.rules', import.meta.url)#'firestore.rules'#" rules_test.mjs
+          echo '{"name":"rt","version":"1.0.0","type":"module"}' > package.json
+          echo '{"firestore":{"rules":"firestore.rules"},"emulators":{"firestore":{"port":8089},"ui":{"enabled":false}}}' > firebase.json
+          npm i --no-audit --no-fund firebase-tools@13.29.1 @firebase/rules-unit-testing@3.0.4 firebase@10.14.1
+          npx firebase emulators:exec --only firestore --project demo-kitayskiy "node rules_test.mjs" | tee rules.log
+          ! grep -q '^FAIL' rules.log

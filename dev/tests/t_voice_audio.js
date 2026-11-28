@@ -3,7 +3,7 @@
 // растёт с замедлением. Запуск: node t_voice_audio.js  (порт 8765)
 const { chromium } = require('playwright'); const { spawn } = require('child_process');
 (async () => {
-  const srv = spawn('python3', ['-m', 'http.server', '8765', '--directory', '/home/user/kitayskiy-5'], { stdio: 'ignore' });
+  const srv = spawn('python3', ['-m', 'http.server', '8765', '--directory', require('path').resolve(__dirname, '..', '..')], { stdio: 'ignore' });
   await new Promise(r => setTimeout(r, 800));
   const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] }); const out = {}; const ctx = await b.newContext({ viewport: { width: 390, height: 844 } }); const p = await ctx.newPage();
   const errs = []; p.on('pageerror', e => errs.push(e.message));
